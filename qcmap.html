@@ -36,8 +36,12 @@
 <body>
 
 <div class="search-box">
-    <input type="text" id="search" placeholder="Type Barangay name">
-    <button onclick="searchBarangay()">Go</button>
+    <label for="barangaySelect">Select Barangay:</label>
+    <input list="barangays" id="barangaySelect" placeholder="Type or select barangay">
+    <datalist id="barangays">
+        <!-- Options will be filled dynamically -->
+    </datalist>
+    <button onclick="zoomToBarangay()">Go</button>
 </div>
 
 <div id="map"></div>
@@ -45,7 +49,6 @@
 <script>
     var map = L.map('map').setView([14.676, 121.043], 12);
 
-    // Tile layer
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
@@ -56,17 +59,17 @@
         "Bagong Silangan": 21
     };
 
-    // Reverse color scale (light → dark)
     function getColor(d) {
-        return d > 100 ? '#004e64' :   // darkest
+        return d > 100 ? '#004e64' :
                d > 50  ? '#007c91' :
                d > 20  ? '#00aebd' :
                d > 10  ? '#33cdd5' :
                d > 5   ? '#66dbe8' :
-                         '#cceff4';  // lightest
+                         '#cceff4';
     }
 
-    var geoLayer; // Keep reference to layer for search
+    var geoLayer;
+    var barangayList = []; // to fill the dropdown
 
     fetch("qc_barangay.geojson")
         .then(res => res.json())
@@ -85,6 +88,14 @@
                 onEachFeature: function(feature, layer) {
                     var brgy = feature.properties.NAME || feature.properties.name;
                     var total = cases[brgy] || 0;
+
+                    // Add to datalist
+                    if (!barangayList.includes(brgy)) {
+                        barangayList.push(brgy);
+                        var option = document.createElement('option');
+                        option.value = brgy;
+                        document.getElementById('barangays').appendChild(option);
+                    }
 
                     layer.bindPopup("<b>" + brgy + "</b><br>Cases: " + total);
 
@@ -112,12 +123,11 @@
                 }
             }).addTo(map);
 
-            // Add legend
+            // Legend
             var legend = L.control({position: 'bottomright'});
             legend.onAdd = function(map) {
                 var div = L.DomUtil.create('div', 'legend'),
-                    grades = [0, 5, 10, 20, 50, 100],
-                    labels = [];
+                    grades = [0, 5, 10, 20, 50, 100];
                 for (var i = 0; i < grades.length; i++) {
                     div.innerHTML +=
                         '<i style="background:' + getColor(grades[i] + 1) + '"></i> ' +
@@ -129,9 +139,8 @@
         })
         .catch(err => console.error("Error loading the GeoJSON:", err));
 
-    // Search function
-    function searchBarangay() {
-        var input = document.getElementById('search').value.trim();
+    function zoomToBarangay() {
+        var input = document.getElementById('barangaySelect').value.trim();
         if (!input || !geoLayer) return;
 
         geoLayer.eachLayer(function(layer) {
