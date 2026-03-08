@@ -49,38 +49,60 @@ return d > 100 ? '#800026' :
 }
 
 fetch("qc_barangay.geojson")
-.then(res=>res.json())
-.then(data=>{
+.then(res => res.json())
+.then(data => {
 
-L.geoJSON(data,{
+    L.geoJSON(data, {
+        style: function(feature) {
+            var brgy = feature.properties.NAME;
+            var total = cases[brgy] || 0;
+            return {
+                fillColor: getColor(total),
+                weight: 1,
+                color: 'white',
+                fillOpacity: 0.7
+            };
+        },
 
-style:function(feature){
+        // --- UPDATE THIS SECTION ---
+        onEachFeature: function(feature, layer) {
+            var brgy = feature.properties.NAME;
+            var total = cases[brgy] || 0;
 
-var brgy = feature.properties.NAME;
-var total = cases[brgy] || 0;
+            // Bind the popup so it knows what text to show
+            layer.bindPopup("<b>" + brgy + "</b><br>Cases: " + total);
 
-return{
-fillColor:getColor(total),
-weight:1,
-color:'white',
-fillOpacity:0.7
-};
+            layer.on({
+                mouseover: function(e) {
+                    var hoveredLayer = e.target;
+                    
+                    // Visual highlight
+                    hoveredLayer.setStyle({
+                        weight: 3,
+                        color: '#666',
+                        fillOpacity: 0.9
+                    });
 
-},
+                    hoveredLayer.bringToFront();
+                    hoveredLayer.openPopup(); // Show on hover
+                },
+                mouseout: function(e) {
+                    var hoveredLayer = e.target;
+                    
+                    // Reset to original style
+                    hoveredLayer.setStyle({
+                        weight: 1,
+                        color: 'white',
+                        fillOpacity: 0.7
+                    });
+                    
+                    hoveredLayer.closePopup(); // Hide when mouse leaves
+                }
+            });
+        }
+        // ---------------------------
 
-onEachFeature:function(feature,layer){
-
-var brgy = feature.properties.NAME;
-var total = cases[brgy] || 0;
-
-layer.bindPopup(
-"<b>"+brgy+"</b><br>Cases: "+total
-);
-
-}
-
-}).addTo(map);
-
+    }).addTo(map);
 });
 
 </script>
@@ -88,3 +110,4 @@ layer.bindPopup(
 </body>
 
 </html>
+
