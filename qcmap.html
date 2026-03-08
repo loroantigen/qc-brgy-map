@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>QC Map with Age Groups</title>
+<title>QC Map with Age Groups + LGU Hospitals</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <style>
@@ -21,7 +21,6 @@ body { margin:0; padding:0; font-family: Arial, sans-serif; }
     align-items: center;
     gap: 30px;
 }
-
 #filterBar label { margin-right:5px; }
 #filterBar input, #filterBar select, #filterBar button { padding:4px 6px; }
 
@@ -65,6 +64,10 @@ body { margin:0; padding:0; font-family: Arial, sans-serif; }
             <option value="41+">Age Group 41+</option>
         </select>
     </div>
+    <div>
+        <input type="checkbox" id="showHospitals" checked onchange="toggleHospitals()">
+        <label for="showHospitals">Show LGU Hospitals</label>
+    </div>
 </div>
 
 <div id="map"></div>
@@ -77,7 +80,9 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 var geoLayer;
-var cases = {}; // Filled from Apps Script
+var cases = {};        // Barangay data
+var hospitalCases = {}; // Hospital deliveries
+var hospitalMarkers = [];
 var barangayList = [];
 
 // Legend
@@ -98,58 +103,57 @@ function getColor(d) {
                      '#cceff4';
 }
 
-// Load GeoJSON
+// Load Barangay GeoJSON
 fetch("qc_barangay.geojson")
-    .then(res => res.json())
-    .then(data => {
-        geoLayer = L.geoJSON(data, {
-            style: function(feature) {
-                var brgy = feature.properties.NAME || feature.properties.name;
-                var val = cases[brgy] ? cases[brgy].total : 0;
-                return { fillColor: getColor(val), weight: 1, color: 'white', fillOpacity: 0.7 };
-            },
-            onEachFeature: function(feature, layer) {
-                var brgy = feature.properties.NAME || feature.properties.name;
+.then(res => res.json())
+.then(data => {
+    geoLayer = L.geoJSON(data, {
+        style: function(feature) {
+            var brgy = feature.properties.NAME || feature.properties.name;
+            var val = cases[brgy] ? cases[brgy].total : 0;
+            return { fillColor: getColor(val), weight: 1, color: 'white', fillOpacity: 0.7 };
+        },
+        onEachFeature: function(feature, layer) {
+            var brgy = feature.properties.NAME || feature.properties.name;
 
-                // Populate datalist
-                if (!barangayList.includes(brgy)) {
-                    barangayList.push(brgy);
-                    var option = document.createElement('option');
-                    option.value = brgy;
-                    document.getElementById('barangays').appendChild(option);
-                }
-
-                layer.bindPopup("<b>" + brgy + "</b><br>Loading data...");
-
-                layer.on({
-                    mouseover: function(e) {
-                        var hoveredLayer = e.target;
-                        hoveredLayer.setStyle({ weight: 3, color: '#666', fillOpacity: 0.9 });
-                        hoveredLayer.bringToFront();
-                        hoveredLayer.openPopup();
-                    },
-                    mouseout: function(e) {
-                        var hoveredLayer = e.target;
-                        hoveredLayer.setStyle({ weight: 1, color: 'white', fillOpacity: 0.7 });
-                        hoveredLayer.closePopup();
-                    }
-                });
+            // Populate datalist
+            if (!barangayList.includes(brgy)) {
+                barangayList.push(brgy);
+                var option = document.createElement('option');
+                option.value = brgy;
+                document.getElementById('barangays').appendChild(option);
             }
-        }).addTo(map);
 
-        // Fetch data from Apps Script
-        fetchCases();
-    })
-    .catch(err => console.error("Error loading GeoJSON:", err));
+            layer.bindPopup("<b>" + brgy + "</b><br>Loading data...");
+
+            layer.on({
+                mouseover: function(e) {
+                    var hoveredLayer = e.target;
+                    hoveredLayer.setStyle({ weight: 3, color: '#666', fillOpacity: 0.9 });
+                    hoveredLayer.bringToFront();
+                    hoveredLayer.openPopup();
+                },
+                mouseout: function(e) {
+                    var hoveredLayer = e.target;
+                    hoveredLayer.setStyle({ weight: 1, color: 'white', fillOpacity: 0.7 });
+                    hoveredLayer.closePopup();
+                }
+            });
+        }
+    }).addTo(map);
+
+    fetchCases();
+})
+.catch(err => console.error("Error loading GeoJSON:", err));
 
 function fetchCases() {
     fetch("https://script.google.com/macros/s/AKfycby_IjhcT3xv5tOyexv61TstDCfbsq4rs_QmaipEE8nWzBvN_zOdSN_hL7vI5epkv4Xsxg/exec") // replace with your Apps Script URL
     .then(res => res.json())
     .then(data => {
+        // Barangay data
         cases = {};
-        data.forEach(row => {
-            var brgy = row.Barangay;
-            cases[brgy] = {
+        data.barangay.forEach(row => {
+            cases[row.Barangay] = {
                 total: Number(row.Total),
                 ageGroups: {
                     "0-17": Number(row["Age Group 0-17"]),
@@ -158,10 +162,18 @@ function fetchCases() {
                 }
             };
         });
+
+        // Hospital data
+        hospitalCases = {};
+        data.hospital.forEach(row => hospitalCases[row.Hospital] = Number(row.Deliveries));
+
+        addHospitalMarkers();
+
         updateColors();
     });
 }
 
+// Update polygon colors and popups
 function updateColors() {
     if (!geoLayer) return;
     var selectedAge = document.getElementById('ageGroupSelect').value;
@@ -173,7 +185,6 @@ function updateColors() {
         if (cases[brgy]) {
             if (selectedAge === "total") {
                 val = cases[brgy].total;
-                // Mouse hover shows only total
                 layer.bindPopup("<b>" + brgy + "</b><br>Total: " + val);
             } else {
                 val = cases[brgy].ageGroups[selectedAge];
@@ -184,7 +195,6 @@ function updateColors() {
             layer.bindPopup("<b>" + brgy + "</b><br>No data");
         }
 
-        // Update polygon color based on selected number
         layer.setStyle({ fillColor: getColor(val) });
     });
 
@@ -213,6 +223,57 @@ function updateLegend() {
     grades.forEach((g, i) => {
         div.innerHTML += '<i style="background:' + getColor(g + 1) + '"></i> ' +
                          g + (grades[i + 1] ? '&ndash;' + grades[i + 1] + '<br>' : '+');
+    });
+}
+
+// Add hospital markers on top of polygons
+function addHospitalMarkers() {
+    // Remove old markers
+    hospitalMarkers.forEach(m => map.removeLayer(m));
+    hospitalMarkers = [];
+
+    var hospitalCoords = {
+        "Quezon City General Hospital": [14.661326, 121.018241],
+        "Rosario Maclang Bautista General Hospital": [14.686221, 121.089147],
+        "Novaliches District Hospital": [14.700617, 121.034441]
+    };
+
+    for (var h in hospitalCases) {
+        if (!hospitalCoords[h]) continue;
+
+        var m = L.circleMarker(hospitalCoords[h], {
+            radius: 14,
+            color: "#ff3333",
+            fillColor: "#ff6666",
+            fillOpacity: 0.9,
+            weight: 2,
+            pane: 'markerPane' // ensure it is above polygons
+        }).addTo(map);
+
+        m.bindPopup("<b>" + h + "</b><br>Total Deliveries: " + hospitalCases[h]);
+
+        // Hover effect
+        m.on('mouseover', function(e){
+            this.setStyle({ radius: 20, fillOpacity: 1 });
+            this.openPopup();
+        });
+        m.on('mouseout', function(e){
+            this.setStyle({ radius: 14, fillOpacity: 0.9 });
+            this.closePopup();
+        });
+
+        hospitalMarkers.push(m);
+    }
+
+    toggleHospitals(); // apply current checkbox state
+}
+
+// Toggle hospital visibility
+function toggleHospitals() {
+    var show = document.getElementById('showHospitals').checked;
+    hospitalMarkers.forEach(m => {
+        if (show) map.addLayer(m);
+        else map.removeLayer(m);
     });
 }
 </script>
