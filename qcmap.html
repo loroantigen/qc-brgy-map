@@ -1,113 +1,88 @@
 <!DOCTYPE html>
 <html>
 <head>
-
-<meta charset="utf-8">
-
-<link rel="stylesheet"
-href="https://unpkg.com/leaflet/dist/leaflet.css"/>
-
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-
-<style>
-
-#map{
-height:700px;
-}
-
-</style>
-
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <style>
+        #map { height: 700px; width: 100%; }
+    </style>
 </head>
-
 <body>
 
 <div id="map"></div>
 
 <script>
+    // Initialize map
+    var map = L.map('map').setView([14.676, 121.043], 12);
 
-var map = L.map('map').setView([14.676,121.043],12);
+    // UNCOMMENTED THIS: You need tiles to see the map!
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
 
-//L.tileLayer(
-//'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-//).addTo(map);
+    var cases = {
+        "Commonwealth": 80,
+        "Kaligayahan": 35,
+        "Bagong Silangan": 21
+    };
 
-var cases = {
- "Commonwealth":80,
- "Kaligayahan":35,
- "Bagong Silangan":21
-};
+    function getColor(d) {
+        return d > 100 ? '#800026' :
+               d > 50  ? '#BD0026' :
+               d > 20  ? '#E31A1C' :
+               d > 10  ? '#FC4E2A' :
+               d > 5   ? '#FD8D3C' :
+                         '#FED976';
+    }
 
-function getColor(d){
-
-return d > 100 ? '#800026' :
-       d > 50  ? '#BD0026' :
-       d > 20  ? '#E31A1C' :
-       d > 10  ? '#FC4E2A' :
-       d > 5   ? '#FD8D3C' :
-                 '#FED976';
-
-}
-
-fetch("qc_barangay.geojson")
-.then(res => res.json())
-.then(data => {
-
-    L.geoJSON(data, {
-        style: function(feature) {
-            var brgy = feature.properties.NAME;
-            var total = cases[brgy] || 0;
-            return {
-                fillColor: getColor(total),
-                weight: 1,
-                color: 'white',
-                fillOpacity: 0.7
-            };
-        },
-
-        // --- UPDATE THIS SECTION ---
-        onEachFeature: function(feature, layer) {
-            var brgy = feature.properties.NAME;
-            var total = cases[brgy] || 0;
-
-            // Bind the popup so it knows what text to show
-            layer.bindPopup("<b>" + brgy + "</b><br>Cases: " + total);
-
-            layer.on({
-                mouseover: function(e) {
-                    var hoveredLayer = e.target;
-                    
-                    // Visual highlight
-                    hoveredLayer.setStyle({
-                        weight: 3,
-                        color: '#666',
-                        fillOpacity: 0.9
-                    });
-
-                    hoveredLayer.bringToFront();
-                    hoveredLayer.openPopup(); // Show on hover
-                },
-                mouseout: function(e) {
-                    var hoveredLayer = e.target;
-                    
-                    // Reset to original style
-                    hoveredLayer.setStyle({
+    fetch("qc_barangay.geojson")
+        .then(res => res.json())
+        .then(data => {
+            L.geoJSON(data, {
+                style: function(feature) {
+                    // Check if NAME matches your GeoJSON file's properties!
+                    var brgy = feature.properties.NAME || feature.properties.name; 
+                    var total = cases[brgy] || 0;
+                    return {
+                        fillColor: getColor(total),
                         weight: 1,
                         color: 'white',
                         fillOpacity: 0.7
+                    };
+                },
+                onEachFeature: function(feature, layer) {
+                    var brgy = feature.properties.NAME || feature.properties.name;
+                    var total = cases[brgy] || 0;
+
+                    layer.bindPopup("<b>" + brgy + "</b><br>Cases: " + total);
+
+                    layer.on({
+                        mouseover: function(e) {
+                            var hoveredLayer = e.target;
+                            hoveredLayer.setStyle({
+                                weight: 3,
+                                color: '#666',
+                                fillOpacity: 0.9
+                            });
+                            hoveredLayer.bringToFront();
+                            hoveredLayer.openPopup();
+                        },
+                        mouseout: function(e) {
+                            var hoveredLayer = e.target;
+                            hoveredLayer.setStyle({
+                                weight: 1,
+                                color: 'white',
+                                fillOpacity: 0.7
+                            });
+                            hoveredLayer.closePopup();
+                        }
                     });
-                    
-                    hoveredLayer.closePopup(); // Hide when mouse leaves
                 }
-            });
-        }
-        // ---------------------------
-
-    }).addTo(map);
-});
-
+            }).addTo(map);
+        })
+        .catch(err => console.error("Error loading the GeoJSON:", err));
 </script>
 
 </body>
-
 </html>
-
