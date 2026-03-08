@@ -2,6 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
+    <title>QC Map with Age Groups</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <style>
@@ -38,119 +39,164 @@
 <div class="search-box">
     <label for="barangaySelect">Select Barangay:</label>
     <input list="barangays" id="barangaySelect" placeholder="Type or select barangay">
-    <datalist id="barangays">
-        <!-- Options will be filled dynamically -->
-    </datalist>
+    <datalist id="barangays"></datalist>
     <button onclick="zoomToBarangay()">Go</button>
+    <br><br>
+    <label for="ageGroupSelect">Color by:</label>
+    <select id="ageGroupSelect" onchange="updateColors()">
+        <option value="total">Total</option>
+        <option value="0-17">0-17</option>
+        <option value="18-40">18-40</option>
+        <option value="41+">41+</option>
+    </select>
 </div>
 
 <div id="map"></div>
 
 <script>
-    var map = L.map('map').setView([14.676, 121.043], 12);
+var map = L.map('map').setView([14.676, 121.043], 12);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
 
-    var cases = {
-        "Commonwealth": 80,
-        "Kaligayahan": 35,
-        "Bagong Silangan": 21
-    };
+var geoLayer;
+var cases = {}; // filled from Apps Script
+var barangayList = [];
 
-    function getColor(d) {
-        return d > 100 ? '#004e64' :
-               d > 50  ? '#007c91' :
-               d > 20  ? '#00aebd' :
-               d > 10  ? '#33cdd5' :
-               d > 5   ? '#66dbe8' :
-                         '#cceff4';
-    }
+// Legend
+var legend = L.control({position: 'bottomright'});
+legend.onAdd = function(map) {
+    var div = L.DomUtil.create('div', 'legend');
+    return div;
+};
+legend.addTo(map);
 
-    var geoLayer;
-    var barangayList = []; // to fill the dropdown
+// Color function
+function getColor(d) {
+    return d > 100 ? '#004e64' :
+           d > 50  ? '#007c91' :
+           d > 20  ? '#00aebd' :
+           d > 10  ? '#33cdd5' :
+           d > 5   ? '#66dbe8' :
+                     '#cceff4';
+}
 
-    fetch("qc_barangay.geojson")
-        .then(res => res.json())
-        .then(data => {
-            geoLayer = L.geoJSON(data, {
-                style: function(feature) {
-                    var brgy = feature.properties.NAME || feature.properties.name; 
-                    var total = cases[brgy] || 0;
-                    return {
-                        fillColor: getColor(total),
-                        weight: 1,
-                        color: 'white',
-                        fillOpacity: 0.7
-                    };
-                },
-                onEachFeature: function(feature, layer) {
-                    var brgy = feature.properties.NAME || feature.properties.name;
-                    var total = cases[brgy] || 0;
-
-                    // Add to datalist
-                    if (!barangayList.includes(brgy)) {
-                        barangayList.push(brgy);
-                        var option = document.createElement('option');
-                        option.value = brgy;
-                        document.getElementById('barangays').appendChild(option);
+// Load GeoJSON
+fetch("qc_barangay.geojson")
+    .then(res => res.json())
+    .then(data => {
+        geoLayer = L.geoJSON(data, {
+            style: function(feature) {
+                var brgy = feature.properties.NAME || feature.properties.name;
+                var val = cases[brgy] ? cases[brgy].total : 0;
+                return { fillColor: getColor(val), weight: 1, color: 'white', fillOpacity: 0.7 };
+            },
+            onEachFeature: function(feature, layer) {
+                var brgy = feature.properties.NAME || feature.properties.name;
+                if (!barangayList.includes(brgy)) {
+                    barangayList.push(brgy);
+                    var option = document.createElement('option');
+                    option.value = brgy;
+                    document.getElementById('barangays').appendChild(option);
+                }
+                layer.bindPopup("<b>" + brgy + "</b><br>Loading data...");
+                layer.on({
+                    mouseover: function(e) {
+                        var hoveredLayer = e.target;
+                        hoveredLayer.setStyle({ weight: 3, color: '#666', fillOpacity: 0.9 });
+                        hoveredLayer.bringToFront();
+                        hoveredLayer.openPopup();
+                    },
+                    mouseout: function(e) {
+                        var hoveredLayer = e.target;
+                        hoveredLayer.setStyle({ weight: 1, color: 'white', fillOpacity: 0.7 });
+                        hoveredLayer.closePopup();
                     }
-
-                    layer.bindPopup("<b>" + brgy + "</b><br>Cases: " + total);
-
-                    layer.on({
-                        mouseover: function(e) {
-                            var hoveredLayer = e.target;
-                            hoveredLayer.setStyle({
-                                weight: 3,
-                                color: '#666',
-                                fillOpacity: 0.9
-                            });
-                            hoveredLayer.bringToFront();
-                            hoveredLayer.openPopup();
-                        },
-                        mouseout: function(e) {
-                            var hoveredLayer = e.target;
-                            hoveredLayer.setStyle({
-                                weight: 1,
-                                color: 'white',
-                                fillOpacity: 0.7
-                            });
-                            hoveredLayer.closePopup();
-                        }
-                    });
-                }
-            }).addTo(map);
-
-            // Legend
-            var legend = L.control({position: 'bottomright'});
-            legend.onAdd = function(map) {
-                var div = L.DomUtil.create('div', 'legend'),
-                    grades = [0, 5, 10, 20, 50, 100];
-                for (var i = 0; i < grades.length; i++) {
-                    div.innerHTML +=
-                        '<i style="background:' + getColor(grades[i] + 1) + '"></i> ' +
-                        grades[i] + (grades[i + 1] ? '&ndash;' + grades[i + 1] + '<br>' : '+');
-                }
-                return div;
-            };
-            legend.addTo(map);
-        })
-        .catch(err => console.error("Error loading the GeoJSON:", err));
-
-    function zoomToBarangay() {
-        var input = document.getElementById('barangaySelect').value.trim();
-        if (!input || !geoLayer) return;
-
-        geoLayer.eachLayer(function(layer) {
-            var brgy = layer.feature.properties.NAME || layer.feature.properties.name;
-            if (brgy.toLowerCase() === input.toLowerCase()) {
-                map.fitBounds(layer.getBounds());
-                layer.openPopup();
+                });
             }
+        }).addTo(map);
+        fetchCases();
+    })
+    .catch(err => console.error("Error loading GeoJSON:", err));
+
+// Fetch data from Apps Script
+function fetchCases() {
+    fetch("https://script.google.com/macros/s/AKfycby_IjhcT3xv5tOyexv61TstDCfbsq4rs_QmaipEE8nWzBvN_zOdSN_hL7vI5epkv4Xsxg/exec") // replace with your Apps Script URL
+    .then(res => res.json())
+    .then(data => {
+        cases = {};
+        data.forEach(row => {
+            var brgy = row.Barangay;
+            cases[brgy] = {
+                total: Number(row.Total),
+                ageGroups: {
+                    "0-17": Number(row["0-17"]),
+                    "18-40": Number(row["18-40"]),
+                    "41+": Number(row["41+"])
+                }
+            };
         });
-    }
+        updateColors();
+    });
+}
+
+// Update map colors and popups based on selected age group
+function updateColors() {
+    if (!geoLayer) return;
+    var selectedAge = document.getElementById('ageGroupSelect').value;
+
+    geoLayer.eachLayer(function(layer){
+        var brgy = layer.feature.properties.NAME || layer.feature.properties.name;
+        var val;
+
+        if (cases[brgy]) {
+            if (selectedAge === "total") {
+                val = cases[brgy].total;
+                var ageText = "";
+                for (var age in cases[brgy].ageGroups) {
+                    ageText += age + ": " + cases[brgy].ageGroups[age] + "<br>";
+                }
+                layer.bindPopup("<b>" + brgy + "</b><br>Total: " + cases[brgy].total + "<br>" + ageText);
+            } else {
+                val = cases[brgy].ageGroups[selectedAge];
+                layer.bindPopup("<b>" + brgy + "</b><br>" + selectedAge + ": " + val);
+            }
+        } else {
+            val = 0;
+            layer.bindPopup("<b>" + brgy + "</b><br>No data");
+        }
+
+        layer.setStyle({ fillColor: getColor(val) });
+    });
+
+    updateLegend();
+}
+
+// Zoom to barangay
+function zoomToBarangay() {
+    var input = document.getElementById('barangaySelect').value.trim();
+    if (!input || !geoLayer) return;
+
+    geoLayer.eachLayer(function(layer) {
+        var brgy = layer.feature.properties.NAME || layer.feature.properties.name;
+        if (brgy.toLowerCase() === input.toLowerCase()) {
+            map.fitBounds(layer.getBounds());
+            layer.openPopup();
+        }
+    });
+}
+
+// Update legend
+function updateLegend() {
+    var grades = [0, 5, 10, 20, 50, 100];
+    var div = legend.getContainer();
+    div.innerHTML = "";
+    grades.forEach((g, i) => {
+        div.innerHTML += '<i style="background:' + getColor(g + 1) + '"></i> ' +
+                         g + (grades[i + 1] ? '&ndash;' + grades[i + 1] + '<br>' : '+');
+    });
+}
 </script>
 
 </body>
