@@ -85,7 +85,10 @@ Hospitals
 <script>
 
 var map = L.map('map').setView([14.676,121.043],12);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+maxZoom:19
+}).addTo(map);
 
 var geoLayer;
 var cases = {};
@@ -96,7 +99,9 @@ var barangayList = [];
 var maxCases = 0;
 
 var legend = L.control({position:'bottomright'});
-legend.onAdd = function(){ return L.DomUtil.create('div','legend'); };
+legend.onAdd = function(){
+  return L.DomUtil.create('div','legend');
+};
 legend.addTo(map);
 
 
@@ -105,7 +110,7 @@ function getColor(val){
 
   if(val == 0) return "#ffffff";
 
-  var step = maxCases / 5;
+  var step = maxCases/5;
 
   return val > step*4 ? '#004e64' :
          val > step*3 ? '#007c91' :
@@ -115,113 +120,145 @@ function getColor(val){
 }
 
 
-// LOAD GEOJSON
+// LOAD BARANGAY MAP
 fetch("qc_barangay.geojson")
 .then(r=>r.json())
 .then(data=>{
 
-  geoLayer = L.geoJSON(data,{
-    style: feature=>{
-      var brgy = feature.properties.NAME;
-      var val = cases[brgy]?cases[brgy].total:0;
-      return {fillColor:getColor(val),weight:1,color:'white',fillOpacity:0.7};
-    },
+geoLayer = L.geoJSON(data,{
 
-    onEachFeature: function(feature, layer){
+style: feature=>{
 
-      var brgy = feature.properties.NAME;
+var brgy = feature.properties.NAME;
+var val = cases[brgy] ? cases[brgy].total : 0;
 
-      if(!barangayList.includes(brgy)){
-        barangayList.push(brgy);
-        var opt = document.createElement('option');
-        opt.value = brgy;
-        document.getElementById('barangays').appendChild(opt);
-      }
+return {
+fillColor:getColor(val),
+weight:1,
+color:'white',
+fillOpacity:0.7
+};
 
-      layer.on({
+},
 
-        mouseover: function(e){
-          var l = e.target;
-          var district = l.feature.properties.PROP6DISTB;
-          var total = districtTotals[district] || 0;
+onEachFeature:function(feature,layer){
 
-          l.setStyle({weight:3, color:'#000', fillOpacity:0.9});
-          l.bringToFront();
+var brgy = feature.properties.NAME;
 
-          l.bindTooltip("<b>District "+district+"</b><br>Total: "+total,{sticky:true}).openTooltip();
-        },
+if(!barangayList.includes(brgy)){
+barangayList.push(brgy);
 
-        mouseout: function(e){
-          geoLayer.resetStyle(e.target);
-          e.target.closeTooltip();
-        }
-
-      });
-
-      layer.bindPopup(brgy);
-    }
-
-  }).addTo(map);
-
-  fetchCases();
-});
-
-
-// FETCH DATA
-function fetchCases(){
-
-  fetch("https://script.google.com/macros/s/AKfycbyfreSdzQn-_Se8AWT8C9cCrDCiCoaXBmcUqrFOguP1aILj-lWJtW69ozt0Ov7pFiz0YA/exec")
-  .then(r=>r.json())
-  .then(data=>{
-
-    maxCases = 0;
-
-    data.barangay.forEach(row=>{
-
-      var total = Number(row.Total);
-
-      if(total > maxCases){
-        maxCases = total;
-      }
-
-      cases[row.Barangay] = {
-        total: total,
-        ageGroups: {
-          "0-17": Number(row["Age Group 0-17"]),
-          "18-40": Number(row["Age Group 18-40"]),
-          "41+": Number(row["Age Group 41+"])
-        }
-      };
-
-    });
-
-    hospitalCases = {};
-    data.hospital.forEach(row=>{
-      hospitalCases[row.Hospital] = Number(row.Deliveries);
-    });
-
-    calculateDistrictTotals();
-    updateColors();
-    addHospitalMarkers();
-
-  });
+var opt=document.createElement('option');
+opt.value=brgy;
+document.getElementById('barangays').appendChild(opt);
 }
 
 
-// DISTRICT TOTALS
+// HOVER
+layer.on({
+
+mouseover:function(e){
+
+var l=e.target;
+
+var brgy=l.feature.properties.NAME;
+var district=l.feature.properties.PROP6DISTB;
+
+var total = cases[brgy] ? cases[brgy].total : 0;
+
+l.setStyle({
+weight:3,
+color:'#000',
+fillOpacity:0.9
+});
+
+l.bringToFront();
+
+l.bindTooltip(
+"<b>"+brgy+"</b><br>Deliveries: "+total+"<br>District "+district,
+{sticky:true}
+).openTooltip();
+
+},
+
+mouseout:function(e){
+geoLayer.resetStyle(e.target);
+e.target.closeTooltip();
+}
+
+});
+
+layer.bindPopup(brgy);
+
+}
+
+}).addTo(map);
+
+fetchCases();
+
+});
+
+
+// FETCH DATA FROM APPS SCRIPT
+function fetchCases(){
+
+fetch("https://script.google.com/macros/s/AKfycbyfreSdzQn-_Se8AWT8C9cCrDCiCoaXBmcUqrFOguP1aILj-lWJtW69ozt0Ov7pFiz0YA/exec")
+
+.then(r=>r.json())
+
+.then(data=>{
+
+maxCases = 0;
+
+data.barangay.forEach(row=>{
+
+var total = Number(row.Total);
+
+if(total > maxCases){
+maxCases = total;
+}
+
+cases[row.Barangay] = {
+total: total,
+ageGroups:{
+"0-17":Number(row["Age Group 0-17"]),
+"18-40":Number(row["Age Group 18-40"]),
+"41+":Number(row["Age Group 41+"])
+}
+};
+
+});
+
+hospitalCases={};
+
+data.hospital.forEach(row=>{
+hospitalCases[row.Hospital]=Number(row.Deliveries);
+});
+
+calculateDistrictTotals();
+updateColors();
+addHospitalMarkers();
+
+});
+
+}
+
+
+// CALCULATE DISTRICT TOTAL
 function calculateDistrictTotals(){
 
-  districtTotals = {};
+districtTotals={};
 
-  geoLayer.eachLayer(layer=>{
-    var brgy = layer.feature.properties.NAME;
-    var district = layer.feature.properties.PROP6DISTB;
+geoLayer.eachLayer(layer=>{
 
-    if(!districtTotals[district]) districtTotals[district]=0;
+var brgy=layer.feature.properties.NAME;
+var district=layer.feature.properties.PROP6DISTB;
 
-    if(cases[brgy]) districtTotals[district]+=cases[brgy].total;
+if(!districtTotals[district]) districtTotals[district]=0;
 
-  });
+if(cases[brgy]) districtTotals[district]+=cases[brgy].total;
+
+});
 
 }
 
@@ -229,24 +266,29 @@ function calculateDistrictTotals(){
 // UPDATE COLORS
 function updateColors(){
 
-  var age = document.getElementById("ageGroupSelect").value;
+var age=document.getElementById("ageGroupSelect").value;
 
-  geoLayer.eachLayer(layer=>{
+geoLayer.eachLayer(layer=>{
 
-    var brgy = layer.feature.properties.NAME;
-    var val = 0;
+var brgy=layer.feature.properties.NAME;
 
-    if(cases[brgy]){
-      val = age==='total'
-        ? cases[brgy].total
-        : cases[brgy].ageGroups[age];
-    }
+var val=0;
 
-    layer.setStyle({fillColor:getColor(val)});
+if(cases[brgy]){
 
-  });
+val = age==='total'
+? cases[brgy].total
+: cases[brgy].ageGroups[age];
 
-  updateLegend();
+}
+
+layer.setStyle({
+fillColor:getColor(val)
+});
+
+});
+
+updateLegend();
 
 }
 
@@ -254,46 +296,62 @@ function updateColors(){
 // FILTER DISTRICT
 function filterDistrict(){
 
-  var selected = document.getElementById("districtSelect").value;
+var selected=document.getElementById("districtSelect").value;
 
-  geoLayer.eachLayer(layer=>{
+geoLayer.eachLayer(layer=>{
 
-    var district = layer.feature.properties.PROP6DISTB;
+var district=layer.feature.properties.PROP6DISTB;
 
-    if(selected==='all'){
-      layer.addTo(map);
-    }
-    else if(district==selected){
+if(selected==='all'){
 
-      layer.addTo(map);
+layer.addTo(map);
+geoLayer.resetStyle(layer);
 
-      layer.setStyle({weight:3,color:'#000'});
+}
 
-      layer.bringToFront();
+else if(district==selected){
 
-      layer.bindPopup("<b>District "+district+"</b><br>Total: "+districtTotals[district]);
+layer.addTo(map);
 
-    }
-    else{
-      map.removeLayer(layer);
-    }
+layer.setStyle({
+weight:3,
+color:'#000'
+});
 
-  });
+layer.bindPopup(
+"<b>District "+district+"</b><br>Total Deliveries: "+districtTotals[district]
+);
+
+layer.bringToFront();
+
+}
+
+else{
+
+map.removeLayer(layer);
+
+}
+
+});
 
 }
 
 
-// ZOOM TO BARANGAY
+// ZOOM BARANGAY
 function zoomToBarangay(){
 
-  var input = document.getElementById("barangaySelect").value;
+var input=document.getElementById("barangaySelect").value;
 
-  geoLayer.eachLayer(layer=>{
-    if(layer.feature.properties.NAME===input){
-      map.fitBounds(layer.getBounds());
-      layer.openPopup();
-    }
-  });
+geoLayer.eachLayer(layer=>{
+
+if(layer.feature.properties.NAME===input){
+
+map.fitBounds(layer.getBounds());
+layer.openPopup();
+
+}
+
+});
 
 }
 
@@ -301,26 +359,27 @@ function zoomToBarangay(){
 // DYNAMIC LEGEND
 function updateLegend(){
 
-  var div=legend.getContainer();
-  div.innerHTML='';
+var grades=[];
+var step=Math.round(maxCases/5);
 
-  var step = Math.round(maxCases/5);
+grades=[0,step,step*2,step*3,step*4];
 
-  var grades=[0,step,step*2,step*3,step*4];
+var div=legend.getContainer();
+div.innerHTML='';
 
-  div.innerHTML+='<i style="background:#ffffff;border:1px solid #ccc"></i>0<br>';
+div.innerHTML+='<i style="background:#ffffff;border:1px solid #ccc"></i>0<br>';
 
-  for(var i=0;i<grades.length;i++){
+for(var i=0;i<grades.length;i++){
 
-    var from=grades[i];
-    var to=grades[i+1];
+var from=grades[i];
+var to=grades[i+1];
 
-    div.innerHTML+='<i style="background:'+getColor(from+1)+'"></i>'+
-                   (from==0?1:from)+
-                   (to?'–'+to:'+')+
-                   '<br>';
+div.innerHTML+='<i style="background:'+getColor(from+1)+'"></i>'+
+(from==0?1:from)+
+(to?'–'+to:'+')+
+'<br>';
 
-  }
+}
 
 }
 
@@ -328,34 +387,35 @@ function updateLegend(){
 // HOSPITAL MARKERS
 function addHospitalMarkers(){
 
-  var coords = {
+var coords={
 
-    "Quezon City General Hospital":[14.661326,121.018241],
-    "Rosario Maclang Bautista General Hospital":[14.686221,121.089147],
-    "Novaliches District Hospital":[14.700617,121.034441]
+"Quezon City General Hospital":[14.661326,121.018241],
+"Rosario Maclang Bautista General Hospital":[14.686221,121.089147],
+"Novaliches District Hospital":[14.700617,121.034441]
 
-  };
+};
 
-  hospitalMarkers.forEach(m=>map.removeLayer(m));
+hospitalMarkers.forEach(m=>map.removeLayer(m));
+hospitalMarkers=[];
 
-  hospitalMarkers=[];
+for(var h in hospitalCases){
 
-  for(var h in hospitalCases){
+if(!coords[h]) continue;
 
-    if(!coords[h]) continue;
+var marker=L.circleMarker(coords[h],{
 
-    var m = L.circleMarker(coords[h],{
-      radius:14,
-      color:"#ff3333",
-      fillColor:"#ff6666",
-      fillOpacity:0.9
-    }).addTo(map);
+radius:14,
+color:"#ff3333",
+fillColor:"#ff6666",
+fillOpacity:0.9
 
-    m.bindPopup("<b>"+h+"</b><br>Total Deliveries: "+hospitalCases[h]);
+}).addTo(map);
 
-    hospitalMarkers.push(m);
+marker.bindPopup("<b>"+h+"</b><br>Total Deliveries: "+hospitalCases[h]);
 
-  }
+hospitalMarkers.push(marker);
+
+}
 
 }
 
@@ -363,12 +423,17 @@ function addHospitalMarkers(){
 // TOGGLE HOSPITALS
 function toggleHospitals(){
 
-  var show = document.getElementById("showHospitals").checked;
+var show=document.getElementById("showHospitals").checked;
 
-  hospitalMarkers.forEach(m=>{
-    if(show) map.addLayer(m);
-    else map.removeLayer(m);
-  });
+hospitalMarkers.forEach(m=>{
+
+if(show){
+m.addTo(map);
+}else{
+map.removeLayer(m);
+}
+
+});
 
 }
 
