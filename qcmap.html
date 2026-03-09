@@ -8,7 +8,7 @@
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
     <style>
-        body { margin: 0; font-family: Arial; }
+        body { margin: 0; font-family: Arial, sans-serif; }
         #filterBar {
             background: white;
             padding: 10px;
@@ -60,7 +60,7 @@
     <div>
         District
         <select id="districtSelect" onchange="filterDistrict()">
-            <option value="all">All</option>
+            <option value="all">All Districts</option>
             <option value="1">District 1</option>
             <option value="2">District 2</option>
             <option value="3">District 3</option>
@@ -71,7 +71,7 @@
     </div>
 
     <div>
-        Filter By
+        Color By
         <select id="ageGroupSelect" onchange="updateColors()">
             <option value="total">Total Deliveries</option>
             <option value="15-19">Age 15-19</option>
@@ -106,11 +106,11 @@
 
     var geoLayer;
     var cases = {};
-    var districtTotals = {};
+    var districtTotals = {}; // Restored
     var hospitalCases = {};
     var hospitalMarkers = [];
     var barangayList = [];
-    var maxCases = 0;
+    var currentMax = 0;
     var currentDistrict = "all";
     
     var specialAreas = ["Reservoir", "QMC"];
@@ -123,7 +123,7 @@
         if (specialAreas.includes(name)) return "#ffffff";
         if (val == 0) return "#ffffff";
         
-        var step = maxCases / 5;
+        var step = currentMax / 5;
         return val > step * 4 ? '#004e64' :
                val > step * 3 ? '#007c91' :
                val > step * 2 ? '#00aebd' :
@@ -131,17 +131,14 @@
                                 '#66dbe8';
     }
 
-    // LOAD GEOJSON
     fetch("qc_barangay.geojson")
     .then(r => r.json())
     .then(data => {
         geoLayer = L.geoJSON(data, {
             style: feature => {
-                var brgy = feature.properties.NAME;
-                var val = cases[brgy] ? cases[brgy].total : 0;
                 return {
-                    fillColor: getColor(val, brgy),
-                    weight: specialAreas.includes(brgy) ? 0.5 : 1,
+                    fillColor: "#ffffff",
+                    weight: specialAreas.includes(feature.properties.NAME) ? 0.5 : 1,
                     color: 'white',
                     fillOpacity: 0.7
                 };
@@ -167,33 +164,41 @@
                         mouseover: function(e) {
                             var l = e.target;
                             var district = l.feature.properties.PROP6DISTB;
-                            
-                            // --- DYNAMIC TOOLTIP CONTENT START ---
                             var selectedAge = document.getElementById("ageGroupSelect").value;
+                            
                             var displayVal = 0;
-                            var labelText = "Total Deliveries";
-
+                            var labelText = selectedAge === 'total' ? "Total Deliveries" : "Deliveries (Age " + selectedAge + ")";
+                            
                             if (cases[brgy]) {
-                                if (selectedAge === 'total') {
-                                    displayVal = cases[brgy].total;
-                                } else {
-                                    displayVal = cases[brgy].ageGroups[selectedAge] || 0;
-                                    labelText = "(Age " + selectedAge + ")";
-                                }
+                                displayVal = selectedAge === 'total' ? cases[brgy].total : (cases[brgy].ageGroups[selectedAge] || 0);
                             }
 
                             l.setStyle({ weight: 3, color: '#000', fillOpacity: 0.9 });
                             l.bringToFront();
-
+                            
+                            // UPDATED TOOLTIP LOGIC: Shows district total if a district filter is active
                             var content = currentDistrict === "all" 
                                 ? "<b>"+brgy+"</b><br>" + labelText + ": " + displayVal
-                                : "<b>District "+district+"</b><br>Total District Deliveries: " + (districtTotals[district] || 0);
+                                : "<b>District " + district + "</b><br>" + (selectedAge === 'total' ? 'Total' : 'Age ' + selectedAge) + " Deliveries: " + (districtTotals[district] || 0) + "<br><i>" + brgy + ": " + displayVal + "</i>";
 
                             l.bindTooltip(content, {sticky: true}).openTooltip();
-                            // --- DYNAMIC TOOLTIP CONTENT END ---
                         },
                         mouseout: function(e) {
-                            geoLayer.resetStyle(e.target);
+                            var l = e.target;
+                            var selectedAge = document.getElementById("ageGroupSelect").value;
+                            var val = 0;
+                            
+                            if (cases[brgy]) {
+                                val = (selectedAge === 'total') ? cases[brgy].total : (cases[brgy].ageGroups[selectedAge] || 0);
+                            }
+
+                            l.setStyle({
+                                fillColor: getColor(val, brgy),
+                                weight: 1,
+                                color: 'white',
+                                fillOpacity: 0.7
+                            });
+                            
                             e.target.closeTooltip();
                         }
                     });
@@ -209,13 +214,9 @@
         fetch("https://script.google.com/macros/s/AKfycbyfreSdzQn-_Se8AWT8C9cCrDCiCoaXBmcUqrFOguP1aILj-lWJtW69ozt0Ov7pFiz0YA/exec")
         .then(r => r.json())
         .then(data => {
-            maxCases = 0;
             data.barangay.forEach(row => {
-                var total = Number(row.Total);
-                if (total > maxCases) maxCases = total;
-                
                 cases[row.Barangay] = {
-                    total: total,
+                    total: Number(row.Total),
                     ageGroups: {
                         "15-19": Number(row["Age Group 15-19"]),
                         "20-30": Number(row["Age Group 20-30"]),
@@ -225,29 +226,28 @@
                 };
             });
 
-            hospitalCases = {};
             data.hospital.forEach(row => {
                 hospitalCases[row.Hospital] = Number(row.Deliveries);
             });
 
-            calculateDistrictTotals();
             updateColors();
             addHospitalMarkers();
         });
     }
 
-    // Calculate District Totals based on current active age group
+    // RESTORED: Calculates totals per district based on active age filter
     function calculateDistrictTotals() {
         districtTotals = {};
-        var selectedAge = document.getElementById("ageGroupSelect").value;
+        var age = document.getElementById("ageGroupSelect").value;
         
         geoLayer.eachLayer(layer => {
             var brgy = layer.feature.properties.NAME;
             var district = layer.feature.properties.PROP6DISTB;
+            
             if (!districtTotals[district]) districtTotals[district] = 0;
             
             if (cases[brgy]) {
-                var val = (selectedAge === 'total') ? cases[brgy].total : (cases[brgy].ageGroups[selectedAge] || 0);
+                var val = (age === 'total') ? cases[brgy].total : (cases[brgy].ageGroups[age] || 0);
                 districtTotals[district] += val;
             }
         });
@@ -255,6 +255,13 @@
 
     function updateColors() {
         var age = document.getElementById("ageGroupSelect").value;
+        currentMax = 0;
+        
+        for (var b in cases) {
+            var val = (age === 'total') ? cases[b].total : cases[b].ageGroups[age];
+            if (val > currentMax) currentMax = val;
+        }
+
         geoLayer.eachLayer(layer => {
             var brgy = layer.feature.properties.NAME;
             var val = 0;
@@ -263,10 +270,27 @@
             }
             layer.setStyle({fillColor: getColor(val, brgy)});
         });
-        
-        // Recalculate district totals whenever age group changes
-        calculateDistrictTotals();
+
+        calculateDistrictTotals(); // Added here to ensure data is ready for hover
         updateLegend();
+    }
+
+    function updateLegend() {
+        var step = Math.ceil(currentMax / 5);
+        if (step < 1) step = 1;
+        var grades = [step, step * 2, step * 3, step * 4];
+        var div = legend.getContainer();
+        var ageLabel = document.getElementById("ageGroupSelect").value;
+        var title = ageLabel === 'total' ? "Deliveries" : "Age " + ageLabel;
+        
+        div.innerHTML = '<strong>' + title + '</strong><br>';
+        div.innerHTML += '<i style="background:' + getColor(1) + '"></i>1–' + step + '<br>';
+        for (var i = 0; i < grades.length; i++) {
+            var from = grades[i];
+            var to = grades[i + 1];
+            div.innerHTML += '<i style="background:' + getColor(from + 1) + '"></i>' + 
+                (from + 1) + (to ? '–' + to : '+') + '<br>';
+        }
     }
 
     function filterDistrict() {
@@ -283,6 +307,7 @@
                 map.removeLayer(layer);
             }
         });
+        calculateDistrictTotals(); // Re-sync totals
     }
 
     function zoomToBarangay() {
@@ -293,20 +318,6 @@
                 layer.openPopup();
             }
         });
-    }
-
-    function updateLegend() {
-        var step = Math.round(maxCases / 5);
-        var grades = [step, step * 2, step * 3, step * 4];
-        var div = legend.getContainer();
-        div.innerHTML = '<strong>Deliveries</strong><br>';
-        div.innerHTML += '<i style="background:' + getColor(1) + '"></i>1–' + step + '<br>';
-        for (var i = 0; i < grades.length; i++) {
-            var from = grades[i];
-            var to = grades[i + 1];
-            div.innerHTML += '<i style="background:' + getColor(from + 1) + '"></i>' +
-                (from + 1) + (to ? '–' + to : '+') + '<br>';
-        }
     }
 
     function addHospitalMarkers() {
@@ -321,13 +332,11 @@
 
         for (var h in hospitalCases) {
             if (!coords[h]) continue;
-
             var marker = L.marker(coords[h], {
                 icon: hospitalIcon,
                 pane: 'hospitalPane'
             }).addTo(map);
-
-            marker.bindTooltip("<b>" + h + "</b><br>Total Deliveries: " + hospitalCases[h]);
+            marker.bindTooltip("<b>" + h + "</b><br>Deliveries: " + hospitalCases[h]);
             hospitalMarkers.push(marker);
         }
     }
