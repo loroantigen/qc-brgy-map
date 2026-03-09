@@ -2,280 +2,439 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>QC Map with Age Groups + LGU Hospitals</title>
+<title>QC Maternal Deliveries Map</title>
+
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
 <style>
-body { margin:0; padding:0; font-family: Arial, sans-serif; }
 
-/* Top filter bar */
-#filterBar {
-    width: 100%;
-    background: white;
-    padding: 10px 20px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-    position: sticky;
-    top: 0;
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    gap: 30px;
+body{
+margin:0;
+font-family:Arial, Helvetica, sans-serif;
 }
-#filterBar label { margin-right:5px; }
-#filterBar input, #filterBar select, #filterBar button { padding:4px 6px; }
 
-/* Map fills remaining viewport */
-#map { height: calc(100vh - 60px); width: 100%; }
+#filterBar{
+background:white;
+padding:10px 20px;
+box-shadow:0 2px 6px rgba(0,0,0,0.3);
+display:flex;
+gap:20px;
+align-items:center;
+position:sticky;
+top:0;
+z-index:1000;
+}
 
-/* Legend styling */
-.legend {
-    line-height: 18px;
-    color: #555;
-    background: white;
-    padding: 6px 8px;
-    border-radius: 5px;
-    box-shadow: 0 0 5px rgba(0,0,0,0.3);
+#map{
+height:calc(100vh - 60px);
+width:100%;
 }
-.legend i {
-    width: 18px;
-    height: 18px;
-    float: left;
-    margin-right: 8px;
-    opacity: 0.7;
+
+.legend{
+background:white;
+padding:6px 10px;
+border-radius:6px;
+box-shadow:0 0 6px rgba(0,0,0,0.3);
+line-height:18px;
 }
+
+.legend i{
+width:18px;
+height:18px;
+float:left;
+margin-right:8px;
+opacity:0.7;
+}
+
 </style>
 </head>
+
 <body>
 
-<!-- Top Filter Bar -->
 <div id="filterBar">
-    <div>
-        <label for="barangaySelect">Barangay:</label>
-        <input list="barangays" id="barangaySelect" placeholder="Type or select barangay">
-        <datalist id="barangays"></datalist>
-        <button onclick="zoomToBarangay()">Go</button>
-    </div>
-    <div>
-        <label for="ageGroupSelect">Color by:</label>
-        <select id="ageGroupSelect" onchange="updateColors()">
-            <option value="total">Total</option>
-            <option value="0-17">Age Group 0-17</option>
-            <option value="18-40">Age Group 18-40</option>
-            <option value="41+">Age Group 41+</option>
-        </select>
-    </div>
-    <div>
-        <input type="checkbox" id="showHospitals" checked onchange="toggleHospitals()">
-        <label for="showHospitals">Show LGU Hospitals</label>
-    </div>
+
+<div>
+<label>Barangay</label>
+<input list="barangays" id="barangaySelect" placeholder="Type barangay">
+<datalist id="barangays"></datalist>
+<button onclick="zoomToBarangay()">Go</button>
+</div>
+
+<div>
+<label>District</label>
+<select id="districtSelect" onchange="filterDistrict()">
+<option value="all">All</option>
+<option value="1">District 1</option>
+<option value="2">District 2</option>
+<option value="3">District 3</option>
+<option value="4">District 4</option>
+<option value="5">District 5</option>
+<option value="6">District 6</option>
+</select>
+</div>
+
+<div>
+<label>Color By</label>
+<select id="ageGroupSelect" onchange="updateColors()">
+<option value="total">Total</option>
+<option value="0-17">Age Group 0-17</option>
+<option value="18-40">Age Group 18-40</option>
+<option value="41+">Age Group 41+</option>
+</select>
+</div>
+
+<div>
+<input type="checkbox" id="showHospitals" checked onchange="toggleHospitals()">
+<label>Show LGU Hospitals</label>
+</div>
+
 </div>
 
 <div id="map"></div>
 
 <script>
-var map = L.map('map').setView([14.676, 121.043], 12);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors'
+var map = L.map('map').setView([14.676,121.043],12);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+attribution:'© OpenStreetMap'
 }).addTo(map);
 
 var geoLayer;
-var cases = {};        // Barangay data
-var hospitalCases = {}; // Hospital deliveries
+var cases = {};
+var hospitalCases = {};
 var hospitalMarkers = [];
 var barangayList = [];
 
-// Legend
-var legend = L.control({position: 'bottomright'});
-legend.onAdd = function(map) {
-    var div = L.DomUtil.create('div', 'legend');
-    return div;
+
+var legend = L.control({position:'bottomright'});
+
+legend.onAdd = function(){
+var div = L.DomUtil.create('div','legend');
+return div;
 };
+
 legend.addTo(map);
 
-// Color function
-function getColor(d) {
-    return d > 100 ? '#004e64' :
-           d > 50  ? '#007c91' :
-           d > 20  ? '#00aebd' :
-           d > 10  ? '#33cdd5' :
-           d > 5   ? '#66dbe8' :
-                     '#cceff4';
+
+function getColor(d){
+
+return d>100?'#004e64':
+d>50?'#007c91':
+d>20?'#00aebd':
+d>10?'#33cdd5':
+d>5?'#66dbe8':
+'#cceff4';
+
 }
 
-// Load Barangay GeoJSON
+
 fetch("qc_barangay.geojson")
-.then(res => res.json())
-.then(data => {
-    geoLayer = L.geoJSON(data, {
-        style: function(feature) {
-            var brgy = feature.properties.NAME || feature.properties.name;
-            var val = cases[brgy] ? cases[brgy].total : 0;
-            return { fillColor: getColor(val), weight: 1, color: 'white', fillOpacity: 0.7 };
-        },
-        onEachFeature: function(feature, layer) {
-            var brgy = feature.properties.NAME || feature.properties.name;
+.then(res=>res.json())
+.then(data=>{
 
-            // Populate datalist
-            if (!barangayList.includes(brgy)) {
-                barangayList.push(brgy);
-                var option = document.createElement('option');
-                option.value = brgy;
-                document.getElementById('barangays').appendChild(option);
-            }
+geoLayer = L.geoJSON(data,{
 
-            layer.bindPopup("<b>" + brgy + "</b><br>Loading data...");
+style:function(feature){
 
-            layer.on({
-                mouseover: function(e) {
-                    var hoveredLayer = e.target;
-                    hoveredLayer.setStyle({ weight: 3, color: '#666', fillOpacity: 0.9 });
-                    hoveredLayer.bringToFront();
-                    hoveredLayer.openPopup();
-                },
-                mouseout: function(e) {
-                    var hoveredLayer = e.target;
-                    hoveredLayer.setStyle({ weight: 1, color: 'white', fillOpacity: 0.7 });
-                    hoveredLayer.closePopup();
-                }
-            });
-        }
-    }).addTo(map);
+var brgy = feature.properties.NAME;
+var val = cases[brgy]?cases[brgy].total:0;
 
-    fetchCases();
-})
-.catch(err => console.error("Error loading GeoJSON:", err));
+return{
+fillColor:getColor(val),
+weight:1,
+color:'white',
+fillOpacity:0.7
+};
 
-function fetchCases() {
-    fetch("https://script.google.com/macros/s/AKfycby_IjhcT3xv5tOyexv61TstDCfbsq4rs_QmaipEE8nWzBvN_zOdSN_hL7vI5epkv4Xsxg/exec") // replace with your Apps Script URL
-    .then(res => res.json())
-    .then(data => {
-        // Barangay data
-        cases = {};
-        data.barangay.forEach(row => {
-            cases[row.Barangay] = {
-                total: Number(row.Total),
-                ageGroups: {
-                    "0-17": Number(row["Age Group 0-17"]),
-                    "18-40": Number(row["Age Group 18-40"]),
-                    "41+": Number(row["Age Group 41+"])
-                }
-            };
-        });
+},
 
-        // Hospital data
-        hospitalCases = {};
-        data.hospital.forEach(row => hospitalCases[row.Hospital] = Number(row.Deliveries));
+onEachFeature:function(feature,layer){
 
-        addHospitalMarkers();
+var brgy = feature.properties.NAME;
 
-        updateColors();
-    });
+if(!barangayList.includes(brgy)){
+
+barangayList.push(brgy);
+
+var option = document.createElement('option');
+option.value = brgy;
+
+document.getElementById('barangays').appendChild(option);
+
 }
 
-// Update polygon colors and popups
-function updateColors() {
-    if (!geoLayer) return;
-    var selectedAge = document.getElementById('ageGroupSelect').value;
+layer.bindPopup("<b>"+brgy+"</b><br>Loading...");
 
-    geoLayer.eachLayer(function(layer){
-        var brgy = layer.feature.properties.NAME || layer.feature.properties.name;
-        var val;
+layer.on({
 
-        if (cases[brgy]) {
-            if (selectedAge === "total") {
-                val = cases[brgy].total;
-                layer.bindPopup("<b>" + brgy + "</b><br>Total: " + val);
-            } else {
-                val = cases[brgy].ageGroups[selectedAge];
-                layer.bindPopup("<b>" + brgy + "</b><br>" + selectedAge + ": " + val);
-            }
-        } else {
-            val = 0;
-            layer.bindPopup("<b>" + brgy + "</b><br>No data");
-        }
+mouseover:function(e){
 
-        layer.setStyle({ fillColor: getColor(val) });
-    });
+var l=e.target;
 
-    updateLegend();
+l.setStyle({
+weight:3,
+color:'#666',
+fillOpacity:0.9
+});
+
+l.openPopup();
+
+},
+
+mouseout:function(e){
+
+geoLayer.resetStyle(e.target);
+
 }
 
-// Zoom to selected barangay
-function zoomToBarangay() {
-    var input = document.getElementById('barangaySelect').value.trim();
-    if (!input || !geoLayer) return;
+});
 
-    geoLayer.eachLayer(function(layer) {
-        var brgy = layer.feature.properties.NAME || layer.feature.properties.name;
-        if (brgy.toLowerCase() === input.toLowerCase()) {
-            map.fitBounds(layer.getBounds());
-            layer.openPopup();
-        }
-    });
 }
 
-// Update legend
-function updateLegend() {
-    var grades = [0, 5, 10, 20, 50, 100];
-    var div = legend.getContainer();
-    div.innerHTML = "";
-    grades.forEach((g, i) => {
-        div.innerHTML += '<i style="background:' + getColor(g + 1) + '"></i> ' +
-                         g + (grades[i + 1] ? '&ndash;' + grades[i + 1] + '<br>' : '+');
-    });
+}).addTo(map);
+
+fetchCases();
+
+});
+
+
+function fetchCases(){
+
+fetch("YOUR_APPS_SCRIPT_URL")
+
+.then(res=>res.json())
+
+.then(data=>{
+
+cases={};
+
+data.barangay.forEach(row=>{
+
+cases[row.Barangay]={
+
+total:Number(row.Total),
+
+ageGroups:{
+"0-17":Number(row["Age Group 0-17"]),
+"18-40":Number(row["Age Group 18-40"]),
+"41+":Number(row["Age Group 41+"])
 }
 
-// Add hospital markers on top of polygons
-function addHospitalMarkers() {
-    // Remove old markers
-    hospitalMarkers.forEach(m => map.removeLayer(m));
-    hospitalMarkers = [];
+};
 
-    var hospitalCoords = {
-        "Quezon City General Hospital": [14.661326, 121.018241],
-        "Rosario Maclang Bautista General Hospital": [14.686221, 121.089147],
-        "Novaliches District Hospital": [14.700617, 121.034441]
-    };
+});
 
-    for (var h in hospitalCases) {
-        if (!hospitalCoords[h]) continue;
 
-        var m = L.circleMarker(hospitalCoords[h], {
-            radius: 14,
-            color: "#ff3333",
-            fillColor: "#ff6666",
-            fillOpacity: 0.9,
-            weight: 2,
-            pane: 'markerPane' // ensure it is above polygons
-        }).addTo(map);
+hospitalCases={};
 
-        m.bindPopup("<b>" + h + "</b><br>Total Deliveries: " + hospitalCases[h]);
+data.hospital.forEach(row=>{
 
-        // Hover effect
-        m.on('mouseover', function(e){
-            this.setStyle({ radius: 20, fillOpacity: 1 });
-            this.openPopup();
-        });
-        m.on('mouseout', function(e){
-            this.setStyle({ radius: 14, fillOpacity: 0.9 });
-            this.closePopup();
-        });
+hospitalCases[row.Hospital]=Number(row.Deliveries);
 
-        hospitalMarkers.push(m);
-    }
+});
 
-    toggleHospitals(); // apply current checkbox state
+addHospitalMarkers();
+
+updateColors();
+
+});
+
 }
 
-// Toggle hospital visibility
-function toggleHospitals() {
-    var show = document.getElementById('showHospitals').checked;
-    hospitalMarkers.forEach(m => {
-        if (show) map.addLayer(m);
-        else map.removeLayer(m);
-    });
+
+
+function updateColors(){
+
+if(!geoLayer)return;
+
+var selectedAge=document.getElementById('ageGroupSelect').value;
+
+geoLayer.eachLayer(function(layer){
+
+var brgy=layer.feature.properties.NAME;
+
+var val=0;
+
+if(cases[brgy]){
+
+if(selectedAge==="total"){
+
+val=cases[brgy].total;
+
+layer.bindPopup("<b>"+brgy+"</b><br>Total: "+val);
+
+}else{
+
+val=cases[brgy].ageGroups[selectedAge];
+
+layer.bindPopup("<b>"+brgy+"</b><br>"+selectedAge+": "+val);
+
 }
+
+}else{
+
+layer.bindPopup("<b>"+brgy+"</b><br>No Data");
+
+}
+
+layer.setStyle({
+
+fillColor:getColor(val)
+
+});
+
+});
+
+updateLegend();
+
+}
+
+
+
+function zoomToBarangay(){
+
+var input=document.getElementById('barangaySelect').value.trim();
+
+if(!input)return;
+
+geoLayer.eachLayer(function(layer){
+
+var brgy=layer.feature.properties.NAME;
+
+if(brgy.toLowerCase()===input.toLowerCase()){
+
+map.fitBounds(layer.getBounds());
+
+layer.openPopup();
+
+}
+
+});
+
+}
+
+
+
+function filterDistrict(){
+
+var selected=document.getElementById('districtSelect').value;
+
+geoLayer.eachLayer(function(layer){
+
+var district=layer.feature.properties.PROP6DISTB;
+
+if(selected==="all"){
+
+layer.addTo(map);
+
+}else{
+
+if(district==selected){
+
+layer.addTo(map);
+
+}else{
+
+map.removeLayer(layer);
+
+}
+
+}
+
+});
+
+}
+
+
+
+function updateLegend(){
+
+var grades=[0,5,10,20,50,100];
+
+var div=legend.getContainer();
+
+div.innerHTML="";
+
+for(var i=0;i<grades.length;i++){
+
+div.innerHTML+='<i style="background:'+getColor(grades[i]+1)+'"></i> '+
+grades[i]+(grades[i+1]?'&ndash;'+grades[i+1]+'<br>':'+');
+
+}
+
+}
+
+
+
+function addHospitalMarkers(){
+
+hospitalMarkers.forEach(m=>map.removeLayer(m));
+
+hospitalMarkers=[];
+
+var hospitalCoords={
+
+"Quezon City General Hospital":[14.661326,121.018241],
+"Rosario Maclang Bautista General Hospital":[14.686221,121.089147],
+"Novaliches District Hospital":[14.700617,121.034441]
+
+};
+
+for(var h in hospitalCases){
+
+if(!hospitalCoords[h])continue;
+
+var marker=L.circleMarker(hospitalCoords[h],{
+
+radius:14,
+color:"#ff3333",
+fillColor:"#ff6666",
+fillOpacity:0.9,
+weight:2
+
+}).addTo(map);
+
+marker.bindPopup("<b>"+h+"</b><br>Total Deliveries: "+hospitalCases[h]);
+
+marker.on('mouseover',function(){
+
+this.setStyle({radius:20});
+this.openPopup();
+
+});
+
+marker.on('mouseout',function(){
+
+this.setStyle({radius:14});
+this.closePopup();
+
+});
+
+hospitalMarkers.push(marker);
+
+}
+
+toggleHospitals();
+
+}
+
+
+
+function toggleHospitals(){
+
+var show=document.getElementById('showHospitals').checked;
+
+hospitalMarkers.forEach(m=>{
+
+if(show)map.addLayer(m);
+else map.removeLayer(m);
+
+});
+
+}
+
 </script>
 
 </body>
