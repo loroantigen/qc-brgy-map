@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>QC Maternal Deliveries Map</title>
+<title>QC Deliveries Map</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -11,32 +11,27 @@
 
 body{
 margin:0;
-font-family:Arial, Helvetica, sans-serif;
+font-family:Arial;
 }
 
 #filterBar{
 background:white;
-padding:10px 20px;
-box-shadow:0 2px 6px rgba(0,0,0,0.3);
+padding:10px;
 display:flex;
 gap:20px;
 align-items:center;
-position:sticky;
-top:0;
-z-index:1000;
+box-shadow:0 2px 6px rgba(0,0,0,0.3);
 }
 
 #map{
 height:calc(100vh - 60px);
-width:100%;
 }
 
 .legend{
 background:white;
-padding:6px 10px;
+padding:6px;
 border-radius:6px;
-box-shadow:0 0 6px rgba(0,0,0,0.3);
-line-height:18px;
+box-shadow:0 0 5px rgba(0,0,0,0.3);
 }
 
 .legend i{
@@ -55,14 +50,14 @@ opacity:0.7;
 <div id="filterBar">
 
 <div>
-<label>Barangay</label>
-<input list="barangays" id="barangaySelect" placeholder="Type barangay">
+Barangay
+<input list="barangays" id="barangaySelect">
 <datalist id="barangays"></datalist>
 <button onclick="zoomToBarangay()">Go</button>
 </div>
 
 <div>
-<label>District</label>
+District
 <select id="districtSelect" onchange="filterDistrict()">
 <option value="all">All</option>
 <option value="1">District 1</option>
@@ -75,18 +70,18 @@ opacity:0.7;
 </div>
 
 <div>
-<label>Color By</label>
+Color By
 <select id="ageGroupSelect" onchange="updateColors()">
 <option value="total">Total</option>
-<option value="0-17">Age Group 0-17</option>
-<option value="18-40">Age Group 18-40</option>
-<option value="41+">Age Group 41+</option>
+<option value="0-17">Age 0-17</option>
+<option value="18-40">Age 18-40</option>
+<option value="41+">Age 41+</option>
 </select>
 </div>
 
 <div>
 <input type="checkbox" id="showHospitals" checked onchange="toggleHospitals()">
-<label>Show LGU Hospitals</label>
+Hospitals
 </div>
 
 </div>
@@ -97,26 +92,24 @@ opacity:0.7;
 
 var map = L.map('map').setView([14.676,121.043],12);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-attribution:'© OpenStreetMap'
-}).addTo(map);
+L.tileLayer(
+'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+).addTo(map);
 
 var geoLayer;
-var cases = {};
-var hospitalCases = {};
-var hospitalMarkers = [];
-var barangayList = [];
+var cases={};
+var hospitalCases={};
+var hospitalMarkers=[];
+var barangayList=[];
+var districtTotals={};
 
+var legend=L.control({position:'bottomright'});
 
-var legend = L.control({position:'bottomright'});
-
-legend.onAdd = function(){
-var div = L.DomUtil.create('div','legend');
-return div;
+legend.onAdd=function(){
+return L.DomUtil.create('div','legend');
 };
 
 legend.addTo(map);
-
 
 function getColor(d){
 
@@ -129,17 +122,16 @@ d>5?'#66dbe8':
 
 }
 
-
 fetch("qc_barangay.geojson")
-.then(res=>res.json())
+.then(r=>r.json())
 .then(data=>{
 
-geoLayer = L.geoJSON(data,{
+geoLayer=L.geoJSON(data,{
 
 style:function(feature){
 
-var brgy = feature.properties.NAME;
-var val = cases[brgy]?cases[brgy].total:0;
+var brgy=feature.properties.NAME;
+var val=cases[brgy]?cases[brgy].total:0;
 
 return{
 fillColor:getColor(val),
@@ -152,20 +144,20 @@ fillOpacity:0.7
 
 onEachFeature:function(feature,layer){
 
-var brgy = feature.properties.NAME;
+var brgy=feature.properties.NAME;
 
 if(!barangayList.includes(brgy)){
 
 barangayList.push(brgy);
 
-var option = document.createElement('option');
-option.value = brgy;
+var opt=document.createElement("option");
+opt.value=brgy;
 
-document.getElementById('barangays').appendChild(option);
+document.getElementById("barangays").appendChild(opt);
 
 }
 
-layer.bindPopup("<b>"+brgy+"</b><br>Loading...");
+layer.bindPopup(brgy);
 
 layer.on({
 
@@ -173,13 +165,8 @@ mouseover:function(e){
 
 var l=e.target;
 
-l.setStyle({
-weight:3,
-color:'#666',
-fillOpacity:0.9
-});
-
-l.openPopup();
+l.setStyle({weight:3,color:'#666'});
+l.bringToFront();
 
 },
 
@@ -199,13 +186,10 @@ fetchCases();
 
 });
 
-
 function fetchCases(){
 
 fetch("https://script.google.com/macros/s/AKfycby_IjhcT3xv5tOyexv61TstDCfbsq4rs_QmaipEE8nWzBvN_zOdSN_hL7vI5epkv4Xsxg/exec")
-
-.then(res=>res.json())
-
+.then(r=>r.json())
 .then(data=>{
 
 cases={};
@@ -226,7 +210,6 @@ ageGroups:{
 
 });
 
-
 hospitalCases={};
 
 data.hospital.forEach(row=>{
@@ -235,55 +218,53 @@ hospitalCases[row.Hospital]=Number(row.Deliveries);
 
 });
 
-addHospitalMarkers();
-
 updateColors();
+calculateDistrictTotals();
+addHospitalMarkers();
 
 });
 
 }
 
+function calculateDistrictTotals(){
 
-
-function updateColors(){
-
-if(!geoLayer)return;
-
-var selectedAge=document.getElementById('ageGroupSelect').value;
+districtTotals={};
 
 geoLayer.eachLayer(function(layer){
 
 var brgy=layer.feature.properties.NAME;
+var district=layer.feature.properties.PROP6DISTB;
 
+if(!districtTotals[district]) districtTotals[district]=0;
+
+if(cases[brgy]){
+
+districtTotals[district]+=cases[brgy].total;
+
+}
+
+});
+
+}
+
+function updateColors(){
+
+var age=document.getElementById("ageGroupSelect").value;
+
+geoLayer.eachLayer(function(layer){
+
+var brgy=layer.feature.properties.NAME;
 var val=0;
 
 if(cases[brgy]){
 
-if(selectedAge==="total"){
-
-val=cases[brgy].total;
-
-layer.bindPopup("<b>"+brgy+"</b><br>Total: "+val);
-
-}else{
-
-val=cases[brgy].ageGroups[selectedAge];
-
-layer.bindPopup("<b>"+brgy+"</b><br>"+selectedAge+": "+val);
+val=age==="total" ?
+cases[brgy].total :
+cases[brgy].ageGroups[age];
 
 }
 
-}else{
-
-layer.bindPopup("<b>"+brgy+"</b><br>No Data");
-
-}
-
-layer.setStyle({
-
-fillColor:getColor(val)
-
-});
+layer.setStyle({fillColor:getColor(val)});
 
 });
 
@@ -291,35 +272,9 @@ updateLegend();
 
 }
 
-
-
-function zoomToBarangay(){
-
-var input=document.getElementById('barangaySelect').value.trim();
-
-if(!input)return;
-
-geoLayer.eachLayer(function(layer){
-
-var brgy=layer.feature.properties.NAME;
-
-if(brgy.toLowerCase()===input.toLowerCase()){
-
-map.fitBounds(layer.getBounds());
-
-layer.openPopup();
-
-}
-
-});
-
-}
-
-
-
 function filterDistrict(){
 
-var selected=document.getElementById('districtSelect').value;
+var selected=document.getElementById("districtSelect").value;
 
 geoLayer.eachLayer(function(layer){
 
@@ -335,6 +290,17 @@ if(district==selected){
 
 layer.addTo(map);
 
+layer.setStyle({
+weight:3,
+color:"#000"
+});
+
+layer.bindPopup(
+"<b>District "+district+"</b><br>Total: "+districtTotals[district]
+);
+
+layer.bringToFront();
+
 }else{
 
 map.removeLayer(layer);
@@ -347,34 +313,41 @@ map.removeLayer(layer);
 
 }
 
+function zoomToBarangay(){
 
+var input=document.getElementById("barangaySelect").value;
+
+geoLayer.eachLayer(function(layer){
+
+if(layer.feature.properties.NAME===input){
+
+map.fitBounds(layer.getBounds());
+
+}
+
+});
+
+}
 
 function updateLegend(){
 
 var grades=[0,5,10,20,50,100];
-
 var div=legend.getContainer();
 
 div.innerHTML="";
 
 for(var i=0;i<grades.length;i++){
 
-div.innerHTML+='<i style="background:'+getColor(grades[i]+1)+'"></i> '+
-grades[i]+(grades[i+1]?'&ndash;'+grades[i+1]+'<br>':'+');
+div.innerHTML+='<i style="background:'+getColor(grades[i]+1)+'"></i>'+
+grades[i]+(grades[i+1]?'–'+grades[i+1]+'<br>':'+');
 
 }
 
 }
-
-
 
 function addHospitalMarkers(){
 
-hospitalMarkers.forEach(m=>map.removeLayer(m));
-
-hospitalMarkers=[];
-
-var hospitalCoords={
+var coords={
 
 "Quezon City General Hospital":[14.661326,121.018241],
 "Rosario Maclang Bautista General Hospital":[14.686221,121.089147],
@@ -384,51 +357,30 @@ var hospitalCoords={
 
 for(var h in hospitalCases){
 
-if(!hospitalCoords[h])continue;
-
-var marker=L.circleMarker(hospitalCoords[h],{
+var m=L.circleMarker(coords[h],{
 
 radius:14,
 color:"#ff3333",
 fillColor:"#ff6666",
-fillOpacity:0.9,
-weight:2
+fillOpacity:0.9
 
 }).addTo(map);
 
-marker.bindPopup("<b>"+h+"</b><br>Total Deliveries: "+hospitalCases[h]);
+m.bindPopup(h+"<br>"+hospitalCases[h]);
 
-marker.on('mouseover',function(){
-
-this.setStyle({radius:20});
-this.openPopup();
-
-});
-
-marker.on('mouseout',function(){
-
-this.setStyle({radius:14});
-this.closePopup();
-
-});
-
-hospitalMarkers.push(marker);
+hospitalMarkers.push(m);
 
 }
 
-toggleHospitals();
-
 }
-
-
 
 function toggleHospitals(){
 
-var show=document.getElementById('showHospitals').checked;
+var show=document.getElementById("showHospitals").checked;
 
 hospitalMarkers.forEach(m=>{
 
-if(show)map.addLayer(m);
+if(show) map.addLayer(m);
 else map.removeLayer(m);
 
 });
@@ -439,5 +391,3 @@ else map.removeLayer(m);
 
 </body>
 </html>
-
-
