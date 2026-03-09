@@ -10,7 +10,8 @@
     <style>
         body { margin: 0; font-family: Arial, sans-serif; }
         #filterBar {
-            background: white;
+            background: rgb(0, 78, 100);
+            color: white;
             padding: 10px;
             display: flex;
             gap: 20px;
@@ -71,7 +72,7 @@
     </div>
 
     <div>
-        Color By
+        Filter By
         <select id="ageGroupSelect" onchange="updateColors()">
             <option value="total">Total Deliveries</option>
             <option value="15-19">Age 15-19</option>
@@ -156,7 +157,7 @@
                             var district = l.feature.properties.PROP6DISTB;
                             var age = document.getElementById("ageGroupSelect").value;
                             var val = cases[brgy] ? (age === 'total' ? cases[brgy].total : (cases[brgy].ageGroups[age] || 0)) : 0;
-                            l.setStyle({ weight: 3, color: '#000', fillOpacity: 0.9 });
+                            l.setStyle({ weight: 3, color: '#fff', fillOpacity: 0.9 });
                             l.bringToFront();
                             var content = currentDistrict === "all" 
                                 ? "<b>"+brgy+"</b><br>Deliveries: " + val
@@ -229,7 +230,7 @@
     function updateLegend() {
         var div = legend.getContainer();
         var ageLabel = document.getElementById("ageGroupSelect").value;
-        div.innerHTML = '<strong>' + (ageLabel === 'total' ? "Deliveries" : "Age " + ageLabel) + '</strong><br>';
+        div.innerHTML = '<strong>' + (ageLabel === 'total' ? "Total Deliveries" : "Age " + ageLabel) + '</strong><br>';
 
         if (currentMax <= 0) return;
 
@@ -304,3 +305,4 @@
 
 </body>
 </html>
+
