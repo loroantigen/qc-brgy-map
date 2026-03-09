@@ -8,41 +8,34 @@
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
 <style>
-
 body{
-margin:0;
-font-family:Arial;
+  margin:0;
+  font-family:Arial;
 }
-
 #filterBar{
-background:white;
-padding:10px;
-display:flex;
-gap:20px;
-align-items:center;
-box-shadow:0 2px 6px rgba(0,0,0,0.3);
+  background:white;
+  padding:10px;
+  display:flex;
+  gap:20px;
+  align-items:center;
+  box-shadow:0 2px 6px rgba(0,0,0,0.3);
 }
-
 #map{
-height:calc(100vh - 60px);
+  height:calc(100vh - 60px);
 }
-
 .legend{
-background:white;
-padding:8px;
-border-radius:6px;
-box-shadow:0 0 5px rgba(0,0,0,0.3);
-line-height:18px;
+  background:white;
+  padding:6px;
+  border-radius:6px;
+  box-shadow:0 0 5px rgba(0,0,0,0.3);
 }
-
 .legend i{
-width:18px;
-height:18px;
-float:left;
-margin-right:8px;
-opacity:0.9;
+  width:18px;
+  height:18px;
+  float:left;
+  margin-right:8px;
+  opacity:0.7;
 }
-
 </style>
 </head>
 
@@ -91,15 +84,9 @@ Hospitals
 
 <script>
 
-// MAP INIT
 var map = L.map('map').setView([14.676,121.043],12);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-maxZoom:19
-}).addTo(map);
-
-
-// GLOBAL VARIABLES
 var geoLayer;
 var cases = {};
 var districtTotals = {};
@@ -108,29 +95,24 @@ var hospitalMarkers = [];
 var barangayList = [];
 var maxCases = 0;
 
-
-// LEGEND
 var legend = L.control({position:'bottomright'});
-legend.onAdd = function(){
-return L.DomUtil.create('div','legend');
-};
+legend.onAdd = function(){ return L.DomUtil.create('div','legend'); };
 legend.addTo(map);
 
 
-// COLOR FUNCTION (DYNAMIC)
-function getColor(value){
+// DYNAMIC COLOR FUNCTION
+function getColor(val){
 
-if(value==0) return "#ffffff";
+  if(val == 0) return "#ffffff";
 
-var step = maxCases / 5;
+  var step = maxCases / 5;
 
-return value > step*4 ? '#084081' :
-       value > step*3 ? '#0868ac' :
-       value > step*2 ? '#2b8cbe' :
-       value > step*1 ? '#4eb3d3' :
-                        '#7bccc4';
+  return val > step*4 ? '#004e64' :
+         val > step*3 ? '#007c91' :
+         val > step*2 ? '#00aebd' :
+         val > step*1 ? '#33cdd5' :
+                        '#66dbe8';
 }
-
 
 
 // LOAD GEOJSON
@@ -138,339 +120,255 @@ fetch("qc_barangay.geojson")
 .then(r=>r.json())
 .then(data=>{
 
-geoLayer = L.geoJSON(data,{
+  geoLayer = L.geoJSON(data,{
+    style: feature=>{
+      var brgy = feature.properties.NAME;
+      var val = cases[brgy]?cases[brgy].total:0;
+      return {fillColor:getColor(val),weight:1,color:'white',fillOpacity:0.7};
+    },
 
-style: function(feature){
+    onEachFeature: function(feature, layer){
 
-var brgy = feature.properties.NAME;
-var val = cases[brgy] ? cases[brgy].total : 0;
+      var brgy = feature.properties.NAME;
 
-return {
-fillColor:getColor(val),
-weight:1,
-color:'white',
-fillOpacity:0.7
-};
+      if(!barangayList.includes(brgy)){
+        barangayList.push(brgy);
+        var opt = document.createElement('option');
+        opt.value = brgy;
+        document.getElementById('barangays').appendChild(opt);
+      }
 
-},
+      layer.on({
 
-onEachFeature:function(feature,layer){
+        mouseover: function(e){
+          var l = e.target;
+          var district = l.feature.properties.PROP6DISTB;
+          var total = districtTotals[district] || 0;
 
-var brgy = feature.properties.NAME;
+          l.setStyle({weight:3, color:'#000', fillOpacity:0.9});
+          l.bringToFront();
 
-if(!barangayList.includes(brgy)){
-barangayList.push(brgy);
+          l.bindTooltip("<b>District "+district+"</b><br>Total: "+total,{sticky:true}).openTooltip();
+        },
 
-var opt = document.createElement('option');
-opt.value = brgy;
-document.getElementById('barangays').appendChild(opt);
-}
+        mouseout: function(e){
+          geoLayer.resetStyle(e.target);
+          e.target.closeTooltip();
+        }
 
+      });
 
-layer.on({
+      layer.bindPopup(brgy);
+    }
 
-mouseover:function(e){
+  }).addTo(map);
 
-var l = e.target;
-var district = l.feature.properties.PROP6DISTB;
-var total = districtTotals[district] || 0;
-
-l.setStyle({
-weight:3,
-color:'#000',
-fillOpacity:0.9
-});
-
-l.bringToFront();
-
-l.bindTooltip(
-"<b>District "+district+"</b><br>Total: "+total,
-{sticky:true}
-).openTooltip();
-
-},
-
-mouseout:function(e){
-
-geoLayer.resetStyle(e.target);
-e.target.closeTooltip();
-
-}
-
-});
-
-layer.bindPopup(brgy);
-
-}
-
-}).addTo(map);
-
-fetchCases();
-
+  fetchCases();
 });
 
 
-
-
-// FETCH DATA FROM APPS SCRIPT
+// FETCH DATA
 function fetchCases(){
 
-fetch("https://script.google.com/macros/s/AKfycbyfreSdzQn-_Se8AWT8C9cCrDCiCoaXBmcUqrFOguP1aILj-lWJtW69ozt0Ov7pFiz0YA/exec")
+  fetch("https://script.google.com/macros/s/AKfycbyfreSdzQn-_Se8AWT8C9cCrDCiCoaXBmcUqrFOguP1aILj-lWJtW69ozt0Ov7pFiz0YA/exec")
+  .then(r=>r.json())
+  .then(data=>{
 
-.then(r=>r.json())
+    maxCases = 0;
 
-.then(data=>{
+    data.barangay.forEach(row=>{
 
-maxCases = 0;
+      var total = Number(row.Total);
 
-data.barangay.forEach(row=>{
+      if(total > maxCases){
+        maxCases = total;
+      }
 
-var total = Number(row.Total);
+      cases[row.Barangay] = {
+        total: total,
+        ageGroups: {
+          "0-17": Number(row["Age Group 0-17"]),
+          "18-40": Number(row["Age Group 18-40"]),
+          "41+": Number(row["Age Group 41+"])
+        }
+      };
 
-if(total > maxCases){
-maxCases = total;
+    });
+
+    hospitalCases = {};
+    data.hospital.forEach(row=>{
+      hospitalCases[row.Hospital] = Number(row.Deliveries);
+    });
+
+    calculateDistrictTotals();
+    updateColors();
+    addHospitalMarkers();
+
+  });
 }
-
-cases[row.Barangay] = {
-
-total: total,
-
-ageGroups:{
-"0-17": Number(row["Age Group 0-17"]),
-"18-40": Number(row["Age Group 18-40"]),
-"41+": Number(row["Age Group 41+"])
-}
-
-};
-
-});
-
-
-hospitalCases = {};
-
-data.hospital.forEach(row=>{
-hospitalCases[row.Hospital] = Number(row.Deliveries);
-});
-
-
-calculateDistrictTotals();
-
-updateColors();
-
-addHospitalMarkers();
-
-});
-
-}
-
-
 
 
 // DISTRICT TOTALS
 function calculateDistrictTotals(){
 
-districtTotals = {};
+  districtTotals = {};
 
-geoLayer.eachLayer(layer=>{
+  geoLayer.eachLayer(layer=>{
+    var brgy = layer.feature.properties.NAME;
+    var district = layer.feature.properties.PROP6DISTB;
 
-var brgy = layer.feature.properties.NAME;
-var district = layer.feature.properties.PROP6DISTB;
+    if(!districtTotals[district]) districtTotals[district]=0;
 
-if(!districtTotals[district]){
-districtTotals[district] = 0;
-}
+    if(cases[brgy]) districtTotals[district]+=cases[brgy].total;
 
-if(cases[brgy]){
-districtTotals[district] += cases[brgy].total;
-}
-
-});
+  });
 
 }
-
-
 
 
 // UPDATE COLORS
 function updateColors(){
 
-var age = document.getElementById("ageGroupSelect").value;
+  var age = document.getElementById("ageGroupSelect").value;
 
-geoLayer.eachLayer(layer=>{
+  geoLayer.eachLayer(layer=>{
 
-var brgy = layer.feature.properties.NAME;
+    var brgy = layer.feature.properties.NAME;
+    var val = 0;
 
-var val = 0;
+    if(cases[brgy]){
+      val = age==='total'
+        ? cases[brgy].total
+        : cases[brgy].ageGroups[age];
+    }
 
-if(cases[brgy]){
+    layer.setStyle({fillColor:getColor(val)});
 
-val = age==='total'
-? cases[brgy].total
-: cases[brgy].ageGroups[age];
+  });
 
-}
-
-layer.setStyle({
-fillColor:getColor(val)
-});
-
-});
-
-updateLegend();
+  updateLegend();
 
 }
-
-
 
 
 // FILTER DISTRICT
 function filterDistrict(){
 
-var selected = document.getElementById("districtSelect").value;
+  var selected = document.getElementById("districtSelect").value;
 
-geoLayer.eachLayer(layer=>{
+  geoLayer.eachLayer(layer=>{
 
-var district = layer.feature.properties.PROP6DISTB;
+    var district = layer.feature.properties.PROP6DISTB;
 
-if(selected==='all'){
+    if(selected==='all'){
+      layer.addTo(map);
+    }
+    else if(district==selected){
 
-layer.addTo(map);
+      layer.addTo(map);
 
-}else if(district==selected){
+      layer.setStyle({weight:3,color:'#000'});
 
-layer.addTo(map);
+      layer.bringToFront();
 
-layer.setStyle({
-weight:3,
-color:'#000'
-});
+      layer.bindPopup("<b>District "+district+"</b><br>Total: "+districtTotals[district]);
 
-layer.bringToFront();
+    }
+    else{
+      map.removeLayer(layer);
+    }
 
-layer.bindPopup(
-"<b>District "+district+"</b><br>Total: "+districtTotals[district]
-);
-
-}else{
-
-map.removeLayer(layer);
-
-}
-
-});
+  });
 
 }
 
 
-
-
-// ZOOM BARANGAY
+// ZOOM TO BARANGAY
 function zoomToBarangay(){
 
-var input = document.getElementById("barangaySelect").value;
+  var input = document.getElementById("barangaySelect").value;
 
-geoLayer.eachLayer(layer=>{
-
-if(layer.feature.properties.NAME === input){
-
-map.fitBounds(layer.getBounds());
-layer.openPopup();
-
-}
-
-});
+  geoLayer.eachLayer(layer=>{
+    if(layer.feature.properties.NAME===input){
+      map.fitBounds(layer.getBounds());
+      layer.openPopup();
+    }
+  });
 
 }
 
 
-
-
-// LEGEND
+// DYNAMIC LEGEND
 function updateLegend(){
 
-var div = legend.getContainer();
-div.innerHTML='';
+  var div=legend.getContainer();
+  div.innerHTML='';
 
-var step = Math.round(maxCases/5);
+  var step = Math.round(maxCases/5);
 
-var grades = [0, step, step*2, step*3, step*4];
+  var grades=[0,step,step*2,step*3,step*4];
 
-div.innerHTML +=
-'<i style="background:#ffffff;border:1px solid #ccc"></i> 0<br>';
+  div.innerHTML+='<i style="background:#ffffff;border:1px solid #ccc"></i>0<br>';
 
-for(var i=0;i<grades.length;i++){
+  for(var i=0;i<grades.length;i++){
 
-var from = grades[i];
-var to = grades[i+1];
+    var from=grades[i];
+    var to=grades[i+1];
 
-div.innerHTML +=
-'<i style="background:'+getColor(from+1)+'"></i> '+
-(from==0 ? "1" : from)+
-(to ? ' – '+to : '+')+
-'<br>';
+    div.innerHTML+='<i style="background:'+getColor(from+1)+'"></i>'+
+                   (from==0?1:from)+
+                   (to?'–'+to:'+')+
+                   '<br>';
 
-}
+  }
 
 }
-
-
 
 
 // HOSPITAL MARKERS
 function addHospitalMarkers(){
 
-var coords = {
+  var coords = {
 
-"Quezon City General Hospital":[14.661326,121.018241],
-"Rosario Maclang Bautista General Hospital":[14.686221,121.089147],
-"Novaliches District Hospital":[14.700617,121.034441]
+    "Quezon City General Hospital":[14.661326,121.018241],
+    "Rosario Maclang Bautista General Hospital":[14.686221,121.089147],
+    "Novaliches District Hospital":[14.700617,121.034441]
 
-};
+  };
 
-hospitalMarkers.forEach(m=>map.removeLayer(m));
+  hospitalMarkers.forEach(m=>map.removeLayer(m));
 
-hospitalMarkers=[];
+  hospitalMarkers=[];
 
-for(var h in hospitalCases){
+  for(var h in hospitalCases){
 
-if(!coords[h]) continue;
+    if(!coords[h]) continue;
 
-var m = L.circleMarker(coords[h],{
+    var m = L.circleMarker(coords[h],{
+      radius:14,
+      color:"#ff3333",
+      fillColor:"#ff6666",
+      fillOpacity:0.9
+    }).addTo(map);
 
-radius:14,
-color:"#ff3333",
-fillColor:"#ff6666",
-fillOpacity:0.9
+    m.bindPopup("<b>"+h+"</b><br>Total Deliveries: "+hospitalCases[h]);
 
-}).addTo(map);
+    hospitalMarkers.push(m);
 
-m.bindPopup(
-"<b>"+h+"</b><br>Total Deliveries: "+hospitalCases[h]
-);
-
-hospitalMarkers.push(m);
+  }
 
 }
-
-}
-
-
 
 
 // TOGGLE HOSPITALS
 function toggleHospitals(){
 
-var show = document.getElementById("showHospitals").checked;
+  var show = document.getElementById("showHospitals").checked;
 
-hospitalMarkers.forEach(m=>{
-
-if(show){
-map.addLayer(m);
-}else{
-map.removeLayer(m);
-}
-
-});
+  hospitalMarkers.forEach(m=>{
+    if(show) map.addLayer(m);
+    else map.removeLayer(m);
+  });
 
 }
 
