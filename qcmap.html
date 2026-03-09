@@ -91,7 +91,6 @@
 
 <script>
     var map = L.map('map').setView([14.676, 121.043], 12);
-
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
     var hospitalIcon = L.icon({
@@ -104,48 +103,43 @@
     map.createPane('hospitalPane');
     map.getPane('hospitalPane').style.zIndex = 650;
 
-    var geoLayer;
-    var cases = {};
-    var districtTotals = {}; // Restored
-    var hospitalCases = {};
-    var hospitalMarkers = [];
-    var barangayList = [];
-    var currentMax = 0;
-    var currentDistrict = "all";
-    
+    var geoLayer, cases = {}, districtTotals = {}, hospitalCases = {}, hospitalMarkers = [], barangayList = [];
+    var currentMax = 0, currentDistrict = "all";
     var specialAreas = ["Reservoir", "QMC"];
 
     var legend = L.control({position: 'bottomright'});
     legend.onAdd = function() { return L.DomUtil.create('div', 'legend'); };
     legend.addTo(map);
 
+    // Color logic synced with the midpoint-down division
     function getColor(val, name) {
         if (specialAreas.includes(name)) return "#ffffff";
         if (val == 0) return "#ffffff";
         
-        var step = currentMax / 5;
-        return val > step * 4 ? '#004e64' :
-               val > step * 3 ? '#007c91' :
-               val > step * 2 ? '#00aebd' :
-               val > step * 1 ? '#33cdd5' :
-                                '#66dbe8';
+        var m1 = Math.floor(currentMax / 2);
+        var m2 = Math.floor(m1 / 2);
+        var m3 = Math.floor(m2 / 2);
+        var m4 = Math.floor(m3 / 2);
+
+        return val > m1 ? '#004e64' : 
+               val > m2 ? '#007c91' : 
+               val > m3 ? '#00aebd' : 
+               val > m4 ? '#33cdd5' : 
+                          '#66dbe8';
     }
 
     fetch("qc_barangay.geojson")
     .then(r => r.json())
     .then(data => {
         geoLayer = L.geoJSON(data, {
-            style: feature => {
-                return {
-                    fillColor: "#ffffff",
-                    weight: specialAreas.includes(feature.properties.NAME) ? 0.5 : 1,
-                    color: 'white',
-                    fillOpacity: 0.7
-                };
-            },
+            style: feature => ({
+                fillColor: "#ffffff",
+                weight: specialAreas.includes(feature.properties.NAME) ? 0.5 : 1,
+                color: 'white',
+                fillOpacity: 0.7
+            }),
             onEachFeature: function(feature, layer) {
                 var brgy = feature.properties.NAME;
-                
                 if (!barangayList.includes(brgy) && !specialAreas.includes(brgy)) {
                     barangayList.push(brgy);
                     var opt = document.createElement('option');
@@ -154,51 +148,25 @@
                 }
 
                 if (specialAreas.includes(brgy)) {
-                    layer.bindTooltip(brgy, {
-                        permanent: true, 
-                        direction: 'center', 
-                        className: 'special-area-label'
-                    }).openTooltip();
+                    layer.bindTooltip(brgy, { permanent: true, direction: 'center', className: 'special-area-label' }).openTooltip();
                 } else {
                     layer.on({
                         mouseover: function(e) {
                             var l = e.target;
                             var district = l.feature.properties.PROP6DISTB;
-                            var selectedAge = document.getElementById("ageGroupSelect").value;
-                            
-                            var displayVal = 0;
-                            var labelText = selectedAge === 'total' ? "Total Deliveries" : "Deliveries (Age " + selectedAge + ")";
-                            
-                            if (cases[brgy]) {
-                                displayVal = selectedAge === 'total' ? cases[brgy].total : (cases[brgy].ageGroups[selectedAge] || 0);
-                            }
-
+                            var age = document.getElementById("ageGroupSelect").value;
+                            var val = cases[brgy] ? (age === 'total' ? cases[brgy].total : (cases[brgy].ageGroups[age] || 0)) : 0;
                             l.setStyle({ weight: 3, color: '#000', fillOpacity: 0.9 });
                             l.bringToFront();
-                            
-                            // UPDATED TOOLTIP LOGIC: Shows district total if a district filter is active
                             var content = currentDistrict === "all" 
-                                ? "<b>"+brgy+"</b><br>" + labelText + ": " + displayVal
-                                : "<b>District " + district + "</b><br>" + (selectedAge === 'total' ? 'Total' : 'Age ' + selectedAge) + " Deliveries: " + (districtTotals[district] || 0) + "<br><i>" + brgy + ": " + displayVal + "</i>";
-
+                                ? "<b>"+brgy+"</b><br>Deliveries: " + val
+                                : "<b>District " + district + "</b><br>District Total: " + (districtTotals[district] || 0) + "<br><i>" + brgy + ": " + val + "</i>";
                             l.bindTooltip(content, {sticky: true}).openTooltip();
                         },
                         mouseout: function(e) {
-                            var l = e.target;
-                            var selectedAge = document.getElementById("ageGroupSelect").value;
-                            var val = 0;
-                            
-                            if (cases[brgy]) {
-                                val = (selectedAge === 'total') ? cases[brgy].total : (cases[brgy].ageGroups[selectedAge] || 0);
-                            }
-
-                            l.setStyle({
-                                fillColor: getColor(val, brgy),
-                                weight: 1,
-                                color: 'white',
-                                fillOpacity: 0.7
-                            });
-                            
+                            var age = document.getElementById("ageGroupSelect").value;
+                            var val = cases[brgy] ? (age === 'total' ? cases[brgy].total : (cases[brgy].ageGroups[age] || 0)) : 0;
+                            e.target.setStyle({ fillColor: getColor(val, brgy), weight: 1, color: 'white', fillOpacity: 0.7 });
                             e.target.closeTooltip();
                         }
                     });
@@ -206,7 +174,6 @@
                 }
             }
         }).addTo(map);
-
         fetchCases();
     });
 
@@ -225,81 +192,74 @@
                     }
                 };
             });
-
-            data.hospital.forEach(row => {
-                hospitalCases[row.Hospital] = Number(row.Deliveries);
-            });
-
+            data.hospital.forEach(row => { hospitalCases[row.Hospital] = Number(row.Deliveries); });
             updateColors();
             addHospitalMarkers();
         });
     }
 
-    // RESTORED: Calculates totals per district based on active age filter
     function calculateDistrictTotals() {
         districtTotals = {};
         var age = document.getElementById("ageGroupSelect").value;
-        
         geoLayer.eachLayer(layer => {
             var brgy = layer.feature.properties.NAME;
-            var district = layer.feature.properties.PROP6DISTB;
-            
-            if (!districtTotals[district]) districtTotals[district] = 0;
-            
-            if (cases[brgy]) {
-                var val = (age === 'total') ? cases[brgy].total : (cases[brgy].ageGroups[age] || 0);
-                districtTotals[district] += val;
-            }
+            var dist = layer.feature.properties.PROP6DISTB;
+            if (!districtTotals[dist]) districtTotals[dist] = 0;
+            if (cases[brgy]) districtTotals[dist] += (age === 'total' ? cases[brgy].total : (cases[brgy].ageGroups[age] || 0));
         });
     }
 
     function updateColors() {
         var age = document.getElementById("ageGroupSelect").value;
         currentMax = 0;
-        
         for (var b in cases) {
             var val = (age === 'total') ? cases[b].total : cases[b].ageGroups[age];
             if (val > currentMax) currentMax = val;
         }
-
         geoLayer.eachLayer(layer => {
             var brgy = layer.feature.properties.NAME;
-            var val = 0;
-            if (cases[brgy]) {
-                val = age === 'total' ? cases[brgy].total : cases[brgy].ageGroups[age];
-            }
+            var val = cases[brgy] ? (age === 'total' ? cases[brgy].total : (cases[brgy].ageGroups[age] || 0)) : 0;
             layer.setStyle({fillColor: getColor(val, brgy)});
         });
-
-        calculateDistrictTotals(); // Added here to ensure data is ready for hover
+        calculateDistrictTotals();
         updateLegend();
     }
 
+    // MODIFIED: Follows the cascading division requested (Max -> Midpoint -> Quarter, etc.)
     function updateLegend() {
-        var step = Math.ceil(currentMax / 5);
-        if (step < 1) step = 1;
-        var grades = [step, step * 2, step * 3, step * 4];
         var div = legend.getContainer();
         var ageLabel = document.getElementById("ageGroupSelect").value;
-        var title = ageLabel === 'total' ? "Deliveries" : "Age " + ageLabel;
-        
-        div.innerHTML = '<strong>' + title + '</strong><br>';
-        div.innerHTML += '<i style="background:' + getColor(1) + '"></i>1–' + step + '<br>';
-        for (var i = 0; i < grades.length; i++) {
-            var from = grades[i];
-            var to = grades[i + 1];
-            div.innerHTML += '<i style="background:' + getColor(from + 1) + '"></i>' + 
-                (from + 1) + (to ? '–' + to : '+') + '<br>';
-        }
+        div.innerHTML = '<strong>' + (ageLabel === 'total' ? "Deliveries" : "Age " + ageLabel) + '</strong><br>';
+
+        if (currentMax <= 0) return;
+
+        var m1 = Math.floor(currentMax / 2); // e.g., 45
+        var m2 = Math.floor(m1 / 2);         // e.g., 22
+        var m3 = Math.floor(m2 / 2);         // e.g., 11
+        var m4 = Math.floor(m3 / 2);         // e.g., 5
+
+        var ranges = [
+            { from: m1 + 1, to: currentMax },
+            { from: m2 + 1, to: m1 },
+            { from: m3 + 1, to: m2 },
+            { from: m4 + 1, to: m3 },
+            { from: 1, to: m4 }
+        ];
+
+        ranges.forEach(r => {
+            if (r.to >= r.from) {
+                div.innerHTML += '<i style="background:' + getColor(r.to) + '"></i> ' + r.from + '–' + r.to + '<br>';
+            }
+        });
     }
 
     function filterDistrict() {
         currentDistrict = document.getElementById("districtSelect").value;
         geoLayer.eachLayer(layer => {
-            var district = layer.feature.properties.PROP6DISTB;
+            var dist = layer.feature.properties.PROP6DISTB;
             if (currentDistrict === "all") {
                 layer.addTo(map);
-            } else if (district == currentDistrict) {
+            } else if (dist == currentDistrict) {
                 layer.addTo(map);
                 layer.setStyle({ weight: 3, color: '#000' });
                 layer.bringToFront();
@@ -307,7 +267,7 @@
                 map.removeLayer(layer);
             }
         });
-        calculateDistrictTotals(); // Re-sync totals
+        calculateDistrictTotals();
     }
 
     function zoomToBarangay() {
@@ -326,16 +286,11 @@
             "Rosario Maclang Bautista General Hospital": [14.686221, 121.089147],
             "Novaliches District Hospital": [14.700617, 121.034441]
         };
-
         hospitalMarkers.forEach(m => map.removeLayer(m));
         hospitalMarkers = [];
-
         for (var h in hospitalCases) {
             if (!coords[h]) continue;
-            var marker = L.marker(coords[h], {
-                icon: hospitalIcon,
-                pane: 'hospitalPane'
-            }).addTo(map);
+            var marker = L.marker(coords[h], { icon: hospitalIcon, pane: 'hospitalPane' }).addTo(map);
             marker.bindTooltip("<b>" + h + "</b><br>Deliveries: " + hospitalCases[h]);
             hospitalMarkers.push(marker);
         }
@@ -343,10 +298,7 @@
 
     function toggleHospitals() {
         var show = document.getElementById("showHospitals").checked;
-        hospitalMarkers.forEach(m => {
-            if (show) m.addTo(map);
-            else map.removeLayer(m);
-        });
+        hospitalMarkers.forEach(m => { if (show) m.addTo(map); else map.removeLayer(m); });
     }
 </script>
 
