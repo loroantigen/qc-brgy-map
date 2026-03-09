@@ -404,6 +404,19 @@ fillOpacity:0.9
 
 }).addTo(map);
 
+m.on("mouseover", function(){
+this.setRadius(20);
+});
+
+m.on("mouseout", function(){
+this.setRadius(14);
+});
+
+m.bindTooltip(
+"<b>"+h+"</b><br>Total Deliveries: "+hospitalCases[h],
+{direction:"top", sticky:true}
+);
+
 m.bindPopup("<b>"+h+"</b><br>Total Deliveries: "+hospitalCases[h]);
 
 hospitalMarkers.push(m);
@@ -437,3 +450,4 @@ map.removeLayer(m);
 
 </body>
 </html>
+
